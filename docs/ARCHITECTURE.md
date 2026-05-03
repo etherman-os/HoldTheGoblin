@@ -1,6 +1,6 @@
 # Architecture
 
-HoldTheGoblin is a local-first verifier with three integration surfaces:
+HoldTheGoblin is a local-first verifier with these integration surfaces:
 
 - CLI: `holdthegoblin verify`, `hook`, `checkpoint`, `handoff`, `events`, `doctor`, `mcp`, `mcp-http`, `deploy`, `observability`, and `tests`.
 - Agent project assets: Claude Code hooks, Cursor rules, Codex/Warp `AGENTS.md` rules, and agent skills.
@@ -17,19 +17,21 @@ HoldTheGoblin is a local-first verifier with three integration surfaces:
 5. Run tests and optional Semgrep/Trivy scans.
 6. Run the built-in secret scanner.
 7. Evaluate policy according to `relaxed`, `balanced`, or `strict` mode.
-8. Write `.holdthegoblin/latest.md`, run JSON, and event logs.
+8. Write `.holdthegoblin/latest.md`, immutable run JSON/Markdown, and event logs.
 
 ## Deploy Flow
 
-`holdthegoblin deploy run --plan <file>` reads a versioned deploy plan, runs verification, creates a checkpoint, executes shadow/canary/promote commands, and runs rollback command plus checkpoint restore on failure.
+`holdthegoblin deploy run --plan <file>` reads a versioned deploy plan, validates policy downgrade controls, runs verification, creates a checkpoint, executes shadow/canary/promote commands, and runs rollback command plus checkpoint restore on failure.
 
 The deploy guard is command-runner based. It deliberately does not embed cloud-provider credentials or assume a specific platform.
 
-Deploy commands that match hard-deny risk rules are blocked even if a plan sets `allowDangerous`. Human-approval `ask` rules require `allowDangerous: true` in the reviewed plan plus the explicit run flag `--allow-dangerous`.
+Deploy commands can use `argv` arrays to run without a shell. Legacy `command` strings are still accepted for compatibility, but shell/interpreter wrappers are treated as human-review risk. Hard-deny risk rules are blocked even if a plan sets `allowDangerous`. Human-approval `ask` rules require `allowDangerous: true` in the reviewed plan plus the explicit run flag `--allow-dangerous`.
+
+Deploy plans cannot silently disable verification, checkpoint creation, checkpoint rollback, or promotion health gates. Those policy downgrades require both `allowPolicyDowngrade: true` in the reviewed plan and `--allow-dangerous` at runtime.
 
 ## Observability Flow
 
-Observability export reads a verification JSON report, redacts known secret patterns, removes raw stdout/stderr from command payloads, and writes provider-shaped JSON under `.holdthegoblin/exports/`.
+Observability export reads verification JSON reports only from `.holdthegoblin/runs`, redacts known secret patterns, removes raw stdout/stderr from command payloads, and writes provider-shaped JSON under `.holdthegoblin/exports/`.
 
 Direct network send is opt-in through `--send`.
 
@@ -51,6 +53,7 @@ HoldTheGoblin writes runtime state under `.holdthegoblin/`:
 - `checkpoints/*`
 - `exports/*.json`
 - `deploy-latest.json`
+- `deploy-runs/*.json`
 - `generated-tests.md`
 
 Projects should ignore run reports and checkpoints unless they intentionally want to commit policy configuration.

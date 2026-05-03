@@ -104,6 +104,16 @@ test('observability export rejects run paths outside the project root', async ()
   );
 });
 
+test('observability export only reads HoldTheGoblin run reports', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-observe-run-scope-'));
+  writeFileSync(path.join(root, 'arbitrary.json'), JSON.stringify(sampleVerifyResult(root)));
+
+  await assert.rejects(
+    exportObservability({ root, provider: 'all', run: 'arbitrary.json' }),
+    /under \.holdthegoblin\/runs/
+  );
+});
+
 function sampleVerifyResult(root: string): VerifyResult {
   return {
     ok: true,

@@ -65,3 +65,17 @@ test('checkpoints skip symlinked files', async () => {
   const checkpoint = await createCheckpoint(root, 'symlink');
   assert.deepEqual(checkpoint.files, ['app.txt']);
 });
+
+test('checkpoints prune old snapshots to the retention limit', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-checkpoint-retention-'));
+  writeFileSync(path.join(root, 'app.txt'), 'content\n');
+
+  for (let i = 0; i < 21; i += 1) {
+    writeFileSync(path.join(root, 'app.txt'), `content ${i}\n`);
+    await createCheckpoint(root, `checkpoint ${i}`);
+  }
+
+  const checkpoints = listCheckpoints(root);
+  assert.equal(checkpoints.length, 20);
+  assert.equal(checkpoints.some((checkpoint) => checkpoint.note === 'checkpoint 0'), false);
+});

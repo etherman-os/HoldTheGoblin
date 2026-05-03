@@ -21,6 +21,7 @@ const DENY_COMMANDS: Array<{ pattern: RegExp; reason: string }> = [
 ];
 
 const ASK_COMMANDS: Array<{ pattern: RegExp; reason: string }> = [
+  { pattern: /\b(?:bash|sh|zsh|fish|node|python|python3|ruby|perl|php)\s+-(?:c|e)\b/, reason: 'Inline interpreter execution requires human approval.' },
   { pattern: /\bkubectl\s+(?:apply|delete|rollout|scale|patch)\b/, reason: 'Kubernetes mutation requires human approval.' },
   { pattern: /\bterraform\s+(?:apply|destroy)\b/, reason: 'Terraform mutation requires human approval.' },
   { pattern: /\bdocker\s+compose\s+down\b.*\s-v\b/, reason: 'Docker volume deletion requires human approval.' },

@@ -41,6 +41,8 @@ export interface PlannedCommand {
   id: string;
   label: string;
   command: string;
+  argv?: string[];
+  shell?: boolean;
   kind: ProjectKind | 'security' | 'doctor' | 'deploy' | 'testgen' | 'observability';
   required: boolean;
   reason: string;
@@ -105,6 +107,8 @@ export interface VerifyResult {
   findings: Finding[];
   edgeCases: EdgeCaseSuggestion[];
   reportPath?: string;
+  markdownReportPath?: string;
+  jsonReportPath?: string;
 }
 
 export interface GuardEvent {

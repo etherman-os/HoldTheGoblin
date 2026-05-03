@@ -50,13 +50,21 @@ function runOnce(command: PlannedCommand, options: RunOptions, attempts: number)
     let timedOut = false;
     let settled = false;
 
-    const child = spawn(command.command, {
-      cwd: options.cwd,
-      shell: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, CI: process.env.CI ?? '1' },
-      detached: process.platform !== 'win32',
-    });
+    const child = command.argv && command.argv.length > 0
+      ? spawn(command.argv[0], command.argv.slice(1), {
+          cwd: options.cwd,
+          shell: false,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, CI: process.env.CI ?? '1' },
+          detached: process.platform !== 'win32',
+        })
+      : spawn(command.command, {
+          cwd: options.cwd,
+          shell: command.shell ?? true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, CI: process.env.CI ?? '1' },
+          detached: process.platform !== 'win32',
+        });
 
     const timer = setTimeout(() => {
       timedOut = true;

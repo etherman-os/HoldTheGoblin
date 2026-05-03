@@ -87,6 +87,8 @@ To disable an external scanner for a repo that cannot run it:
 
 Use scanner disablement carefully. In strict release workflows, treat disabled secret or scanner policy as a review item.
 
+HoldTheGoblin surfaces policy downgrades explicitly. Disabling test-failure blocking, secret blocking, built-in secret scanning, Semgrep, Trivy, or default blocking severities creates a `Configuration policy floor` check. It is a warning in normal balanced verification and a failure in strict or release/deploy verification.
+
 ## Execution
 
 `timeoutMs` applies per command attempt. HoldTheGoblin terminates the process tree when a command times out. `retries` applies to retryable command failures such as timeouts and transient network errors.

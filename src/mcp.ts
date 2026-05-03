@@ -13,6 +13,7 @@ import { loadConfig } from './core/config.js';
 import { listModelProviders } from './core/llm.js';
 import { exportObservability } from './core/observability.js';
 import { renderMarkdownReport, renderTextSummary } from './core/output.js';
+import { readPackageVersion } from './core/package.js';
 import { isInsidePath, resolveInsideProject } from './core/paths.js';
 import { generateTests } from './core/testgen.js';
 import { verify } from './core/verify.js';
@@ -99,7 +100,7 @@ function isLoopbackHost(host: string): boolean {
 export function createMcpServer(options: McpServerOptions = {}): McpServer {
   const server = new McpServer({
     name: 'holdthegoblin',
-    version: '0.1.2',
+    version: readPackageVersion(),
   });
   const launchRoot = options.root;
   const resolveServerRoot = async (root?: string): Promise<string> => {

@@ -1,20 +1,26 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { performance } from 'node:perf_hooks';
+import path from 'node:path';
 import { z } from 'zod';
 import { createCheckpoint, rollbackCheckpoint, type CheckpointMeta } from './checkpoint.js';
 import { appPath, ensureAppDirs, loadConfig } from './config.js';
 import { appendEvent } from './events.js';
 import { resolveInsideProject } from './paths.js';
 import { redactSensitiveData, redactSensitiveText } from './redact.js';
+import { runId } from './report.js';
 import { evaluateCommandRisk } from './risk.js';
 import { runShell } from './runner.js';
 import { verify } from './verify.js';
 import type { CommandResult, PlannedCommand, VerifyResult } from './types.js';
 
 const commandSchema = z.object({
-  command: z.string().min(1),
+  command: z.string().min(1).optional(),
+  argv: z.array(z.string().min(1)).min(1).optional(),
   timeoutMs: z.number().int().positive().optional(),
   retries: z.number().int().nonnegative().optional(),
   allowDangerous: z.boolean().default(false),
+}).refine((value) => Boolean(value.command) !== Boolean(value.argv), {
+  message: 'Set exactly one of "command" or "argv". Prefer "argv" for new deploy plans.',
 });
 
 const deployPlanSchema = z.object({
@@ -22,6 +28,7 @@ const deployPlanSchema = z.object({
   name: z.string().min(1).default('holdthegoblin-deploy'),
   verify: z.boolean().default(true),
   checkpoint: z.boolean().default(true),
+  allowPolicyDowngrade: z.boolean().default(false),
   shadow: commandSchema.optional(),
   shadowHealth: commandSchema.optional(),
   canary: commandSchema.optional(),
@@ -32,9 +39,10 @@ const deployPlanSchema = z.object({
 });
 
 export type DeployPlan = z.infer<typeof deployPlanSchema>;
+type DeployCommandSpec = z.infer<typeof commandSchema>;
 
 export interface DeployPhaseResult {
-  phase: 'verify' | 'checkpoint' | 'shadow' | 'shadowHealth' | 'canary' | 'canaryHealth' | 'promote' | 'rollback' | 'checkpointRollback';
+  phase: 'policy' | 'verify' | 'checkpoint' | 'shadow' | 'shadowHealth' | 'canary' | 'canaryHealth' | 'promote' | 'rollback' | 'checkpointRollback';
   ok: boolean;
   onFailure?: boolean;
   commandResult?: CommandResult;
@@ -49,11 +57,16 @@ export interface DeployRunResult {
   root: string;
   planPath: string;
   plan: DeployPlan;
+  runId: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
   dryRun: boolean;
   rolledBack: boolean;
   checkpointId?: string;
   phases: DeployPhaseResult[];
   reportPath: string;
+  runReportPath: string;
 }
 
 export function readDeployPlan(file: string): DeployPlan {
@@ -67,12 +80,13 @@ export function writeExampleDeployPlan(file: string): string {
     name: 'holdthegoblin-example',
     verify: true,
     checkpoint: true,
-    shadow: { command: 'npm run deploy:shadow', allowDangerous: false },
-    shadowHealth: { command: 'npm run health:shadow', allowDangerous: false },
-    canary: { command: 'npm run deploy:canary', allowDangerous: false },
-    canaryHealth: { command: 'npm run health:canary', allowDangerous: false },
-    promote: { command: 'npm run deploy:promote', allowDangerous: false },
-    rollback: { command: 'npm run deploy:rollback', allowDangerous: false },
+    allowPolicyDowngrade: false,
+    shadow: { argv: ['npm', 'run', 'deploy:shadow'], allowDangerous: false },
+    shadowHealth: { argv: ['npm', 'run', 'health:shadow'], allowDangerous: false },
+    canary: { argv: ['npm', 'run', 'deploy:canary'], allowDangerous: false },
+    canaryHealth: { argv: ['npm', 'run', 'health:canary'], allowDangerous: false },
+    promote: { argv: ['npm', 'run', 'deploy:promote'], allowDangerous: false },
+    rollback: { argv: ['npm', 'run', 'deploy:rollback'], allowDangerous: false },
     rollbackCheckpoint: true,
   };
   writeFileSync(file, JSON.stringify(plan, null, 2) + '\n');
@@ -85,6 +99,9 @@ export async function runDeployPlan(options: {
   dryRun?: boolean;
   allowDangerous?: boolean;
 }): Promise<DeployRunResult> {
+  const started = performance.now();
+  const startedAt = new Date().toISOString();
+  const deployRunId = runId();
   const root = options.root;
   const planPath = resolveInsideProject(root, options.planPath);
   if (!existsSync(planPath)) throw new Error(`Deploy plan not found: ${planPath}`);
@@ -94,9 +111,35 @@ export async function runDeployPlan(options: {
   const phases: DeployPhaseResult[] = [];
   let checkpoint: CheckpointMeta | undefined;
   let rolledBack = false;
+  const policyPhase = evaluateDeployPolicy(plan, options.allowDangerous === true);
+  if (policyPhase) {
+    phases.push(policyPhase);
+    if (!policyPhase.ok) {
+      const result = finalizeDeployResult({ root, planPath, plan, runId: deployRunId, startedAt, started, dryRun: options.dryRun === true, rolledBack, checkpoint, phases });
+      appendDeployEvent(result);
+      return result;
+    }
+  }
 
   if (options.dryRun) {
     for (const phase of plannedPhases(plan)) {
+      const spec = deploySpecForPhase(plan, phase.phase);
+      if (spec) {
+        const risk = evaluateCommandRisk(commandTextForSpec(spec));
+        const approved = risk.decision === 'allow' || (risk.decision === 'ask' && spec.allowDangerous && options.allowDangerous === true);
+        phases.push({
+          phase: phase.phase,
+          ok: approved,
+          skipped: true,
+          onFailure: phase.onFailure,
+          message: approved
+            ? phase.onFailure ? 'Dry run: on-failure phase, command not executed.' : 'Dry run: command not executed.'
+            : risk.decision === 'deny'
+              ? `Dry run blocked by HoldTheGoblin deploy guard: ${risk.reason}`
+              : `Dry run blocked by HoldTheGoblin deploy guard: ${risk.reason} Set allowDangerous in the reviewed plan and pass --allow-dangerous only after human review.`,
+        });
+        continue;
+      }
       phases.push({
         phase: phase.phase,
         ok: true,
@@ -105,24 +148,31 @@ export async function runDeployPlan(options: {
         message: phase.onFailure ? 'Dry run: on-failure phase, command not executed.' : 'Dry run: command not executed.',
       });
     }
-    const result = finalizeDeployResult({ root, planPath, plan, dryRun: true, rolledBack, checkpoint, phases });
+    const result = finalizeDeployResult({ root, planPath, plan, runId: deployRunId, startedAt, started, dryRun: true, rolledBack, checkpoint, phases });
     appendDeployEvent(result);
     return result;
   }
 
   if (plan.verify) {
-    const verifyResult = await verify({ root });
+    const verifyResult = await verify({ root, enforcePolicyFloor: true });
     phases.push({ phase: 'verify', ok: verifyResult.ok, verifyResult });
     if (!verifyResult.ok) {
-      const result = finalizeDeployResult({ root, planPath, plan, dryRun: false, rolledBack, checkpoint, phases });
+      const result = finalizeDeployResult({ root, planPath, plan, runId: deployRunId, startedAt, started, dryRun: false, rolledBack, checkpoint, phases });
       appendDeployEvent(result);
       return result;
     }
   }
 
   if (plan.checkpoint) {
-    checkpoint = await createCheckpoint(root, `deploy:${plan.name}`);
-    phases.push({ phase: 'checkpoint', ok: true, checkpoint });
+    try {
+      checkpoint = await createCheckpoint(root, `deploy:${plan.name}`);
+      phases.push({ phase: 'checkpoint', ok: true, checkpoint });
+    } catch (error) {
+      phases.push({ phase: 'checkpoint', ok: false, message: errorMessage(error) });
+      const result = finalizeDeployResult({ root, planPath, plan, runId: deployRunId, startedAt, started, dryRun: false, rolledBack, checkpoint, phases });
+      appendDeployEvent(result);
+      return result;
+    }
   }
 
   for (const phase of ['shadow', 'shadowHealth', 'canary', 'canaryHealth', 'promote'] as const) {
@@ -136,25 +186,29 @@ export async function runDeployPlan(options: {
         phases.push({ phase: 'rollback', ok: rollbackResult.exitCode === 0 && !rollbackResult.timedOut, commandResult: rollbackResult });
       }
       if (checkpoint && plan.rollbackCheckpoint) {
-        rollbackCheckpoint(root, checkpoint.id, false);
-        rolledBack = true;
-        phases.push({ phase: 'checkpointRollback', ok: true, checkpoint, message: 'Restored checkpoint-tracked files.' });
+        try {
+          rollbackCheckpoint(root, checkpoint.id, false);
+          rolledBack = true;
+          phases.push({ phase: 'checkpointRollback', ok: true, checkpoint, message: 'Restored checkpoint-tracked files.' });
+        } catch (error) {
+          phases.push({ phase: 'checkpointRollback', ok: false, checkpoint, message: errorMessage(error) });
+        }
       }
-      const result = finalizeDeployResult({ root, planPath, plan, dryRun: false, rolledBack, checkpoint, phases });
+      const result = finalizeDeployResult({ root, planPath, plan, runId: deployRunId, startedAt, started, dryRun: false, rolledBack, checkpoint, phases });
       appendDeployEvent(result);
       return result;
     }
   }
 
-  const result = finalizeDeployResult({ root, planPath, plan, dryRun: false, rolledBack, checkpoint, phases });
+  const result = finalizeDeployResult({ root, planPath, plan, runId: deployRunId, startedAt, started, dryRun: false, rolledBack, checkpoint, phases });
   appendDeployEvent(result);
   return result;
 }
 
 function plannedPhases(plan: DeployPlan): Array<{ phase: DeployPhaseResult['phase']; onFailure?: boolean }> {
   const phases: Array<{ phase: DeployPhaseResult['phase']; onFailure?: boolean }> = [];
-  if (plan.checkpoint) phases.push({ phase: 'checkpoint' });
   if (plan.verify) phases.push({ phase: 'verify' });
+  if (plan.checkpoint) phases.push({ phase: 'checkpoint' });
   for (const phase of ['shadow', 'shadowHealth', 'canary', 'canaryHealth', 'promote'] as const) {
     if (plan[phase]) phases.push({ phase });
   }
@@ -163,20 +217,28 @@ function plannedPhases(plan: DeployPlan): Array<{ phase: DeployPhaseResult['phas
   return phases;
 }
 
+function deploySpecForPhase(plan: DeployPlan, phase: DeployPhaseResult['phase']): DeployCommandSpec | undefined {
+  if (phase === 'shadow' || phase === 'shadowHealth' || phase === 'canary' || phase === 'canaryHealth' || phase === 'promote' || phase === 'rollback') {
+    return plan[phase];
+  }
+  return undefined;
+}
+
 async function runDeployCommand(
   phase: DeployPhaseResult['phase'],
-  spec: z.infer<typeof commandSchema>,
+  spec: DeployCommandSpec,
   root: string,
   defaultTimeoutMs: number,
   defaultRetries: number,
   allowDangerous: boolean
 ): Promise<CommandResult> {
-  const risk = evaluateCommandRisk(spec.command);
+  const commandText = commandTextForSpec(spec);
+  const risk = evaluateCommandRisk(commandText);
   if (risk.decision === 'deny' || (risk.decision === 'ask' && !(spec.allowDangerous && allowDangerous))) {
     return {
       id: `deploy:${phase}`,
       label: `Deploy ${phase}`,
-      command: redactSensitiveText(spec.command),
+      command: redactSensitiveText(commandText),
       skipped: false,
       exitCode: 1,
       stdout: '',
@@ -191,7 +253,9 @@ async function runDeployCommand(
   const command: PlannedCommand = {
     id: `deploy:${phase}`,
     label: `Deploy ${phase}`,
-    command: spec.command,
+    command: commandText,
+    argv: spec.argv,
+    shell: spec.argv ? false : true,
     kind: 'deploy',
     required: true,
     reason: `Deploy phase ${phase}`,
@@ -199,14 +263,53 @@ async function runDeployCommand(
   return runShell(command, {
     cwd: root,
     timeoutMs: spec.timeoutMs ?? defaultTimeoutMs,
-    retries: spec.retries ?? defaultRetries,
+    retries: spec.retries ?? defaultRetriesForPhase(phase, defaultRetries),
   });
+}
+
+function evaluateDeployPolicy(plan: DeployPlan, allowDangerous: boolean): DeployPhaseResult | undefined {
+  const downgrades: string[] = [];
+  if (!plan.verify) downgrades.push('pre-deploy verification is disabled');
+  if (!plan.checkpoint) downgrades.push('checkpoint creation is disabled');
+  if (plan.checkpoint && !plan.rollbackCheckpoint) downgrades.push('checkpoint rollback is disabled');
+  if (plan.promote && !plan.shadowHealth && !plan.canaryHealth) {
+    downgrades.push('promote is configured without any health gate');
+  } else {
+    if (plan.promote && plan.shadow && !plan.shadowHealth) downgrades.push('promote is configured without shadowHealth');
+    if (plan.promote && plan.canary && !plan.canaryHealth) downgrades.push('promote is configured without canaryHealth');
+  }
+  if (downgrades.length === 0) return undefined;
+
+  const approved = plan.allowPolicyDowngrade && allowDangerous;
+  return {
+    phase: 'policy',
+    ok: approved,
+    message: approved
+      ? `Policy downgrade approved by reviewed plan and external --allow-dangerous: ${downgrades.join('; ')}.`
+      : `Blocked deploy policy downgrade: ${downgrades.join('; ')}. Keep verify/checkpoint protections enabled, or set allowPolicyDowngrade in the reviewed plan and pass --allow-dangerous after human review.`,
+  };
+}
+
+function defaultRetriesForPhase(phase: DeployPhaseResult['phase'], configuredRetries: number): number {
+  return phase === 'shadowHealth' || phase === 'canaryHealth' ? configuredRetries : 0;
+}
+
+function commandTextForSpec(spec: DeployCommandSpec): string {
+  if (spec.command) return spec.command;
+  return renderArgv(spec.argv ?? []);
+}
+
+function renderArgv(argv: string[]): string {
+  return argv.map((arg) => (/^[A-Za-z0-9_./:@%+=,-]+$/.test(arg) ? arg : JSON.stringify(arg))).join(' ');
 }
 
 function finalizeDeployResult(input: {
   root: string;
   planPath: string;
   plan: DeployPlan;
+  runId: string;
+  startedAt: string;
+  started: number;
   dryRun: boolean;
   rolledBack: boolean;
   checkpoint?: CheckpointMeta;
@@ -219,12 +322,19 @@ function finalizeDeployResult(input: {
     root: input.root,
     planPath: input.planPath,
     plan: input.plan,
+    runId: input.runId,
+    startedAt: input.startedAt,
+    finishedAt: new Date().toISOString(),
+    durationMs: Math.round(performance.now() - input.started),
     dryRun: input.dryRun,
     rolledBack: input.rolledBack,
     checkpointId: input.checkpoint?.id,
     phases: input.phases,
     reportPath: appPath(input.root, 'deploy-latest.json'),
+    runReportPath: appPath(input.root, 'deploy-runs', `${input.runId}.json`),
   });
+  mkdirSync(path.dirname(result.runReportPath), { recursive: true });
+  writeAtomic(result.runReportPath, JSON.stringify(result, null, 2) + '\n');
   writeAtomic(result.reportPath, JSON.stringify(result, null, 2) + '\n');
   return result;
 }
@@ -237,12 +347,17 @@ function appendDeployEvent(result: DeployRunResult): void {
     data: {
       planPath: result.planPath,
       reportPath: result.reportPath,
+      runReportPath: result.runReportPath,
       dryRun: result.dryRun,
       rolledBack: result.rolledBack,
       checkpointId: result.checkpointId,
       phases: result.phases.map((phase) => ({ phase: phase.phase, ok: phase.ok, skipped: phase.skipped })),
     },
   });
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function writeAtomic(file: string, content: string): void {

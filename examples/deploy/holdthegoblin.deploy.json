@@ -4,22 +4,22 @@
   "verify": true,
   "checkpoint": true,
   "shadow": {
-    "command": "node -e \"console.log('shadow deploy ok')\""
+    "argv": ["npm", "run", "deploy:shadow"]
   },
   "shadowHealth": {
-    "command": "node -e \"console.log('shadow health ok')\""
+    "argv": ["npm", "run", "health:shadow"]
   },
   "canary": {
-    "command": "node -e \"console.log('canary deploy ok')\""
+    "argv": ["npm", "run", "deploy:canary"]
   },
   "canaryHealth": {
-    "command": "node -e \"console.log('canary health ok')\""
+    "argv": ["npm", "run", "health:canary"]
   },
   "promote": {
-    "command": "node -e \"console.log('promote ok')\""
+    "argv": ["npm", "run", "deploy:promote"]
   },
   "rollback": {
-    "command": "node -e \"console.log('rollback ok')\""
+    "argv": ["npm", "run", "deploy:rollback"]
   },
   "rollbackCheckpoint": true
 }

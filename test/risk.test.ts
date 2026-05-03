@@ -13,6 +13,11 @@ test('asks for production-like deploy commands', () => {
   assert.equal(result.decision, 'ask');
 });
 
+test('asks for inline interpreter command wrappers', () => {
+  assert.equal(evaluateCommandRisk('bash -c "terraform destroy"').decision, 'ask');
+  assert.equal(evaluateCommandRisk('node -e "require(\\"child_process\\").execSync(\\"kubectl apply -f deploy.yaml\\")"').decision, 'ask');
+});
+
 test('denies destructive database deletion commands', () => {
   assert.equal(evaluateCommandRisk('dropdb production').decision, 'deny');
   assert.equal(evaluateCommandRisk('psql "$DATABASE_URL" -c "DROP DATABASE production"').decision, 'deny');

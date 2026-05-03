@@ -184,6 +184,17 @@ A deploy plan can define `shadow`, `shadowHealth`, `canary`, `canaryHealth`, `pr
 
 Commands that match destructive or human-approval risk rules are blocked by default. Hard-deny rules cannot be bypassed by deploy-plan JSON. Human-approval `ask` rules require both `allowDangerous: true` in the reviewed plan and an explicit `--allow-dangerous` run flag.
 
+Use `argv` arrays for new deploy plans so commands run without a shell:
+
+```json
+{
+  "shadow": { "argv": ["npm", "run", "deploy:shadow"] },
+  "shadowHealth": { "argv": ["npm", "run", "health:shadow"] }
+}
+```
+
+Disabling deploy verification, checkpoint creation, checkpoint rollback, or required health gates is blocked unless the reviewed plan sets `allowPolicyDowngrade: true` and the run also passes `--allow-dangerous`.
+
 ## Observability Export
 
 ```bash
@@ -290,6 +301,7 @@ npm run typecheck
 npm test
 npm run smoke
 npm run demo:db-delete
+npm run package:smoke
 npm run release:check
 npm pack --dry-run
 ```

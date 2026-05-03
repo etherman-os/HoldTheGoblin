@@ -29,14 +29,17 @@ test('boolean false values disable boolean CLI flags', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'htg-cli-dry-run-'));
   const planPath = path.join(root, 'deploy.json');
   const marker = path.join(root, 'deployed.txt');
+  const script = path.join(root, 'deploy.js');
+  writeFileSync(script, 'require("fs").writeFileSync("deployed.txt", "ok");\n');
   writeFileSync(planPath, JSON.stringify({
     version: 1,
     name: 'cli-dry-run',
     verify: false,
     checkpoint: false,
-    shadow: { command: 'node -e "require(\\"fs\\").writeFileSync(\\"deployed.txt\\", \\"ok\\")"' },
+    allowPolicyDowngrade: true,
+    shadow: { argv: [process.execPath, script] },
   }));
 
-  execFileSync(process.execPath, [cli.pathname, 'deploy', 'run', '--plan', planPath, '--dry-run', 'false'], { cwd: root, encoding: 'utf8' });
+  execFileSync(process.execPath, [cli.pathname, 'deploy', 'run', '--plan', planPath, '--dry-run', 'false', '--allow-dangerous'], { cwd: root, encoding: 'utf8' });
   assert.equal(existsSync(marker), true);
 });

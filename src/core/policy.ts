@@ -1,17 +1,33 @@
 import type { CheckResult, CommandResult, EdgeCaseSuggestion, Finding, HoldTheGoblinConfig } from './types.js';
 
+export interface EvaluationOptions {
+  enforcePolicyFloor?: boolean;
+}
+
 export function evaluateResults(
   config: HoldTheGoblinConfig,
   testResults: CommandResult[],
   findings: Finding[],
   warnings: string[],
-  edgeCases: EdgeCaseSuggestion[] = []
+  edgeCases: EdgeCaseSuggestion[] = [],
+  options: EvaluationOptions = {}
 ): CheckResult[] {
   const checks: CheckResult[] = [];
+  const policyDowngrades = findConfigPolicyDowngrades(config);
+  if (policyDowngrades.length > 0) {
+    const status = options.enforcePolicyFloor || config.mode === 'strict' ? 'fail' : 'warn';
+    checks.push({
+      id: 'config:policy-floor',
+      label: 'Configuration policy floor',
+      status,
+      severity: status === 'fail' ? 'high' : 'medium',
+      message: `${policyDowngrades.length} policy downgrade(s) detected: ${policyDowngrades.join('; ')}.`,
+    });
+  }
 
   const runnableTests = testResults.filter((result) => !result.skipped);
   if (runnableTests.length === 0) {
-    const status = config.mode === 'strict' || config.failPolicy.failOnMissingTests ? 'fail' : 'warn';
+    const status = options.enforcePolicyFloor || config.mode === 'strict' || config.failPolicy.failOnMissingTests ? 'fail' : 'warn';
     checks.push({
       id: 'tests:missing',
       label: 'Test coverage gate',
@@ -141,4 +157,21 @@ function tail(value: string): string {
   const trimmed = value.trim();
   if (trimmed.length <= 4000) return trimmed;
   return trimmed.slice(-4000);
+}
+
+function findConfigPolicyDowngrades(config: HoldTheGoblinConfig): string[] {
+  const downgrades: string[] = [];
+  if (!config.failPolicy.failOnTestFailure) downgrades.push('test failures do not block completion');
+  if (!config.failPolicy.failOnSecrets) downgrades.push('secret findings do not block completion');
+  if (!config.security.secretScan) downgrades.push('built-in secret scanning is disabled');
+  if (!config.security.semgrep) downgrades.push('Semgrep policy is disabled');
+  if (!config.security.trivy) downgrades.push('Trivy policy is disabled');
+  if (!includesSeverity(config.failPolicy.semgrepSeverities, 'ERROR')) downgrades.push('Semgrep ERROR severity is not blocking');
+  if (!includesSeverity(config.failPolicy.trivySeverities, 'HIGH')) downgrades.push('Trivy HIGH severity is not blocking');
+  if (!includesSeverity(config.failPolicy.trivySeverities, 'CRITICAL')) downgrades.push('Trivy CRITICAL severity is not blocking');
+  return downgrades;
+}
+
+function includesSeverity(values: string[], expected: string): boolean {
+  return values.some((value) => value.toUpperCase() === expected);
 }

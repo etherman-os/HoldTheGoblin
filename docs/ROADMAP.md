@@ -9,7 +9,9 @@ HoldTheGoblin is a safety tool, so roadmap items need measurable enforcement or 
 - Broaden sensitive-path and redaction coverage.
   Acceptance: hooks/checkpoints/reports cover common local credential stores and token formats.
 - Improve OSS trust basics.
-  Acceptance: CI permissions are explicit, publish provenance workflow exists, privacy/config docs are present, and release checks remain green.
+  Acceptance: CI permissions are explicit, publish provenance workflow exists, package smoke tests run from an installed tarball, privacy/config docs are present, and release checks remain green.
+- Policy downgrade detection.
+  Acceptance: disabling verification, checkpointing, secret scanning, or test failure blocking is surfaced as a blocking finding in strict/release workflows unless explicitly approved outside repo-controlled files.
 
 ## Next
 
@@ -19,8 +21,6 @@ HoldTheGoblin is a safety tool, so roadmap items need measurable enforcement or 
   Acceptance: `.holdthegoblin/config.json` has a documented JSON schema and `config validate` reports precise errors.
 - HTML evidence report.
   Acceptance: local report renders checks, findings, edge-case suggestions, and command summaries without exposing raw secrets.
-- Policy downgrade detection.
-  Acceptance: disabling verification, checkpointing, secret scanning, or test failure blocking is surfaced as a blocking finding in strict/release workflows unless explicitly approved outside repo-controlled files.
 
 ## Later
 

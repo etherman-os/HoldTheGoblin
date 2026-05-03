@@ -117,6 +117,7 @@ export function scanSecrets(root: string): Finding[] {
       }
       if (entropyEnabled) {
         for (const candidate of extractQuotedCandidates(line)) {
+          if (looksLikePath(candidate)) continue;
           if (candidate.length >= 32 && shannonEntropy(candidate) >= 4.2 && /[A-Za-z]/.test(candidate) && /\d/.test(candidate)) {
             findings.push({
               scanner: 'secret',
@@ -228,6 +229,16 @@ function extractQuotedCandidates(line: string): string[] {
   let match: RegExpExecArray | null;
   while ((match = regex.exec(line)) !== null) values.push(match[1]);
   return values;
+}
+
+function looksLikePath(value: string): boolean {
+  const normalized = value.replace(/[\\/]+/g, '/');
+  return (
+    normalized.startsWith('/') ||
+    normalized.startsWith('./') ||
+    normalized.startsWith('../') ||
+    /^[A-Za-z]:\//.test(normalized)
+  );
 }
 
 function shannonEntropy(value: string): number {

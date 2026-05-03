@@ -16,6 +16,16 @@ test('built-in secret scanner catches common tokens', () => {
   assert.ok(findings.some((finding) => finding.scanner === 'secret' && finding.ruleId === 'github-token'));
 });
 
+test('built-in secret scanner ignores high-entropy absolute paths', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'htg-secret-path-'));
+  const pathSegment = 'htg-deploy-verify-' + 'AbCdEf1234567890';
+  writeFileSync(path.join(dir, 'deploy.json'), JSON.stringify({
+    argv: [process.execPath, path.join(tmpdir(), pathSegment, 'ok.js')],
+  }));
+
+  assert.deepEqual(scanSecrets(dir), []);
+});
+
 test('parses semgrep json findings', () => {
   const findings = parseSemgrep(JSON.stringify({
     results: [{ check_id: 'x.y', path: 'a.js', start: { line: 2 }, extra: { severity: 'ERROR', message: 'bad' } }],
@@ -123,4 +133,28 @@ test('security scanner truncated json is reported as skipped warning input', asy
   } finally {
     process.env.PATH = previousPath;
   }
+});
+
+test('configuration policy downgrades are explicit warnings or blocking release findings', () => {
+  const downgraded = {
+    ...DEFAULT_CONFIG,
+    failPolicy: {
+      ...DEFAULT_CONFIG.failPolicy,
+      failOnSecrets: false,
+      semgrepSeverities: [],
+    },
+    security: {
+      ...DEFAULT_CONFIG.security,
+      secretScan: false,
+    },
+  };
+
+  const advisory = evaluateResults(downgraded, [], [], []);
+  const advisoryCheck = advisory.find((check) => check.id === 'config:policy-floor');
+  assert.equal(advisoryCheck?.status, 'warn');
+  assert.match(advisoryCheck?.message ?? '', /policy downgrade/);
+
+  const blocking = evaluateResults(downgraded, [], [], [], [], { enforcePolicyFloor: true });
+  assert.equal(blocking.find((check) => check.id === 'config:policy-floor')?.status, 'fail');
+  assert.equal(isOk(blocking), false);
 });

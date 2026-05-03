@@ -12,6 +12,7 @@ import { initProject } from './core/init.js';
 import { listModelProviders } from './core/llm.js';
 import { exportObservability, type ObservabilityProvider } from './core/observability.js';
 import { renderTextSummary } from './core/output.js';
+import { readPackageVersion } from './core/package.js';
 import { resolveInsideProject } from './core/paths.js';
 import { commandExists } from './core/runner.js';
 import { loadConfig } from './core/config.js';
@@ -356,16 +357,6 @@ async function cmdDemo(root: string): Promise<number> {
   console.log(`Run: cd ${dir} && holdthegoblin wrap --agent all . && holdthegoblin verify`);
   console.log('Expected: verification fails until the demo secret is removed.');
   return 0;
-}
-
-function readPackageVersion(): string {
-  try {
-    const pkgUrl = new URL('../../package.json', import.meta.url);
-    const pkg = JSON.parse(readFileSync(pkgUrl, 'utf8')) as { version?: string };
-    return pkg.version ?? '0.0.0';
-  } catch {
-    return '0.0.0';
-  }
 }
 
 function fileContains(file: string, needle: string): boolean {

@@ -14,6 +14,7 @@ export interface VerifyOptions {
   writeReport?: boolean;
   includeTests?: boolean;
   includeSecurity?: boolean;
+  enforcePolicyFloor?: boolean;
 }
 
 export async function verify(options: VerifyOptions): Promise<VerifyResult> {
@@ -38,10 +39,17 @@ export async function verify(options: VerifyOptions): Promise<VerifyResult> {
     ? await runSecurityScans(options.root, config, detections.securityCommands)
     : { commandResults: [], findings: [], skipped: [] };
 
-  const checks = evaluateResults(config, testResults, security.findings, [
-    ...detections.warnings,
-    ...security.skipped.map((item) => `${item}; scanner skipped.`),
-  ], edgeCases);
+  const checks = evaluateResults(
+    config,
+    testResults,
+    security.findings,
+    [
+      ...detections.warnings,
+      ...security.skipped.map((item) => `${item}; scanner skipped.`),
+    ],
+    edgeCases,
+    { enforcePolicyFloor: options.enforcePolicyFloor === true }
+  );
   const finishedAt = new Date().toISOString();
   const result: VerifyResult = {
     ok: isOk(checks),

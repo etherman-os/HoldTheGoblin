@@ -9,6 +9,7 @@ npm ci
 npm run typecheck
 npm test
 npm run smoke
+npm run package:smoke
 npm run demo:db-delete
 ```
 
@@ -30,6 +31,6 @@ npm run release:check
 
 1. `npm run release:check`
 2. Confirm `README.md`, `CHANGELOG.md`, and examples match the shipped behavior.
-3. Confirm the package dry-run includes `dist/src`, `examples`, `README.md`, and `LICENSE`.
+3. Confirm the installed-package smoke test and package dry-run include `dist/src`, `examples`, `README.md`, and `LICENSE`.
 4. Confirm `PRIVACY.md` and `docs/CONFIG.md` still match data egress and config behavior.
-5. Publish only from a clean working tree and a signed/tagged release. The GitHub publish workflow uses npm provenance when `NPM_TOKEN` is configured.
+5. Publish only from a clean working tree and a signed tag named `v<package.json version>`. The GitHub publish workflow verifies the tag, fails closed if `NPM_TOKEN` is missing, and uses npm provenance.

@@ -13,7 +13,12 @@ export function writeReports(root: string, result: VerifyResult): VerifyResult {
   const markdownPath = path.join(runDir, `${result.runId}.md`);
   const latestPath = appPath(root, 'latest.md');
 
-  const withPath = redactSensitiveData({ ...result, reportPath: latestPath });
+  const withPath = redactSensitiveData({
+    ...result,
+    reportPath: latestPath,
+    markdownReportPath: markdownPath,
+    jsonReportPath: jsonPath,
+  });
   writeAtomic(jsonPath, JSON.stringify(withPath, null, 2) + '\n');
   const markdown = renderMarkdownReport(withPath);
   writeAtomic(markdownPath, markdown);
@@ -25,6 +30,8 @@ export function writeReports(root: string, result: VerifyResult): VerifyResult {
     data: {
       runId: withPath.runId,
       reportPath: withPath.reportPath,
+      markdownReportPath: withPath.markdownReportPath,
+      jsonReportPath: withPath.jsonReportPath,
       failedChecks: withPath.checks.filter((check) => check.status === 'fail').map((check) => check.label),
       warnings: withPath.checks.filter((check) => check.status === 'warn').map((check) => check.label),
       edgeCases: withPath.edgeCases.length,

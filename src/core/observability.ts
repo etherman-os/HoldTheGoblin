@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import path from 'node:path';
 import { appPath, ensureAppDirs, loadConfig } from './config.js';
 import { appendEvent } from './events.js';
-import { resolveInsideProject } from './paths.js';
+import { isInsidePath, resolveInsideProject } from './paths.js';
 import { redactSensitiveData, redactSensitiveText } from './redact.js';
 import type { CheckResult, CommandResult, Finding, VerifyResult } from './types.js';
 
@@ -25,6 +25,8 @@ interface SafeVerifySummary {
   finishedAt: string;
   durationMs: number;
   reportPath?: string;
+  markdownReportPath?: string;
+  jsonReportPath?: string;
   changedFiles: string[];
   detections: unknown;
   checks: Array<Record<string, unknown>>;
@@ -56,8 +58,12 @@ export async function exportObservability(options: {
 }
 
 export function readVerifyRun(root: string, run?: string): VerifyResult {
+  const runsDir = appPath(root, 'runs');
   const file = run ? resolveInsideProject(root, run) : latestRunJson(root);
-  return JSON.parse(readFileSync(file, 'utf8')) as VerifyResult;
+  if (!isInsidePath(runsDir, file)) throw new Error('Observability run must be a HoldTheGoblin JSON report under .holdthegoblin/runs.');
+  const result = JSON.parse(readFileSync(file, 'utf8')) as VerifyResult;
+  if (result.root !== root) throw new Error('Observability run root does not match the current project root.');
+  return result;
 }
 
 export function buildLangfusePayload(result: VerifyResult): unknown {
@@ -223,6 +229,8 @@ function summarizeResult(result: VerifyResult): SafeVerifySummary {
     finishedAt: result.finishedAt,
     durationMs: result.durationMs,
     reportPath: result.reportPath,
+    markdownReportPath: result.markdownReportPath,
+    jsonReportPath: result.jsonReportPath,
     changedFiles: result.changedFiles,
     detections: {
       kinds: result.detections.kinds,

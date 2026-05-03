@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { appPath, ensureAppDirs } from './config.js';
 import { assertSafeRelativePath, isInsidePath, relativePosix, toPosixPath } from './paths.js';
@@ -17,25 +17,47 @@ export interface CheckpointMeta {
 
 const EXCLUDE = new Set(['.git', '.holdthegoblin', 'node_modules', 'dist', 'build', 'coverage', '.next', 'target']);
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
+const MAX_CHECKPOINT_FILES = 5000;
+const MAX_CHECKPOINT_BYTES = 200 * 1024 * 1024;
+const MAX_RETAINED_CHECKPOINTS = 20;
 
 export async function createCheckpoint(root: string, note?: string): Promise<CheckpointMeta> {
   ensureAppDirs(root);
   const id = checkpointId();
   const dir = appPath(root, 'checkpoints', id);
-  const filesDir = path.join(dir, 'files');
+  const stagingDir = appPath(root, 'checkpoints', `${id}.tmp-${process.pid}`);
+  if (existsSync(stagingDir)) rmSync(stagingDir, { recursive: true, force: true });
+  if (existsSync(dir)) throw new Error(`Checkpoint already exists: ${id}`);
+  const filesDir = path.join(stagingDir, 'files');
   mkdirSync(filesDir, { recursive: true });
 
-  const files = await listCandidateFiles(root);
-  for (const file of files) {
-    const source = path.join(root, file);
-    const target = path.join(filesDir, file);
-    mkdirSync(path.dirname(target), { recursive: true });
-    cpSync(source, target);
-  }
+  try {
+    const files = await listCandidateFiles(root);
+    if (files.length > MAX_CHECKPOINT_FILES) {
+      throw new Error(`Cannot create checkpoint: ${files.length} files exceeds the limit of ${MAX_CHECKPOINT_FILES}.`);
+    }
 
-  const meta: CheckpointMeta = { id, root, createdAt: new Date().toISOString(), files, note };
-  writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2) + '\n');
-  return meta;
+    let totalBytes = 0;
+    for (const file of files) {
+      const source = path.join(root, file);
+      totalBytes += statSync(source).size;
+      if (totalBytes > MAX_CHECKPOINT_BYTES) {
+        throw new Error(`Cannot create checkpoint: snapshot exceeds ${Math.round(MAX_CHECKPOINT_BYTES / 1024 / 1024)} MiB.`);
+      }
+      const target = path.join(filesDir, file);
+      mkdirSync(path.dirname(target), { recursive: true });
+      cpSync(source, target);
+    }
+
+    const meta: CheckpointMeta = { id, root, createdAt: new Date().toISOString(), files, note };
+    writeFileSync(path.join(stagingDir, 'meta.json'), JSON.stringify(meta, null, 2) + '\n');
+    renameSync(stagingDir, dir);
+    pruneOldCheckpoints(root);
+    return meta;
+  } catch (error) {
+    rmSync(stagingDir, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 function checkpointId(): string {
@@ -126,4 +148,12 @@ function canSnapshot(file: string, relativeFile = toPosixPath(file)): boolean {
   if (parts.some((part) => EXCLUDE.has(part))) return false;
   const stat = statSync(file);
   return stat.isFile() && stat.size <= MAX_FILE_SIZE;
+}
+
+function pruneOldCheckpoints(root: string): void {
+  const checkpoints = listCheckpoints(root);
+  const stale = checkpoints.slice(0, Math.max(0, checkpoints.length - MAX_RETAINED_CHECKPOINTS));
+  for (const checkpoint of stale) {
+    rmSync(appPath(root, 'checkpoints', checkpoint.id), { recursive: true, force: true });
+  }
 }
