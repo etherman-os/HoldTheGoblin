@@ -14,11 +14,11 @@ HoldTheGoblin is a safety tool, so roadmap items need measurable enforcement or 
   Acceptance: disabling verification, checkpointing, secret scanning, or test failure blocking is surfaced as a blocking finding in strict/release workflows unless explicitly approved outside repo-controlled files.
 - Config validation and schema.
   Acceptance: `.holdthegoblin/config.json` has a documented JSON schema and `config validate` reports precise errors.
+- First-class downstream GitHub Action template.
+  Acceptance: users can add a copy-paste workflow that runs `holdthegoblin verify` on pull requests.
 
 ## Next
 
-- First-class downstream GitHub Action template.
-  Acceptance: users can add a copy-paste workflow that runs `holdthegoblin verify` on pull requests.
 - HTML evidence report.
   Acceptance: local report renders checks, findings, edge-case suggestions, and command summaries without exposing raw secrets.
 

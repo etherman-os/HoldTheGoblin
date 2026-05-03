@@ -141,6 +141,12 @@ The `npm exec` fallback is for projects that install HoldTheGoblin as a dependen
 
 The TypeScript SDK is exported from `holdthegoblin`. It includes dependency-light LangGraph node helpers and CrewAI guard helpers. Python CrewAI projects can use `integrations/crewai/holdthegoblin_guard.py`.
 
+## GitHub Actions Gate
+
+Copy `examples/github-action/holdthegoblin-verify.yml` into `.github/workflows/holdthegoblin.yml` in a downstream repository to run HoldTheGoblin on pull requests.
+
+The workflow validates config first, then runs `holdthegoblin verify`. It is a CI gate, not an agent sandbox: failures are enforced by the pull request check result.
+
 ## Test Generation
 
 ```bash
@@ -289,6 +295,7 @@ to review recent init, verification, and guard events.
 - `examples/cursor-rule`: Cursor integration notes.
 - `examples/codex-rule`: Codex `AGENTS.md` integration notes.
 - `examples/warp-rule`: Warp `AGENTS.md`/`WARP.md` integration notes.
+- `examples/github-action`: pull request verification workflow template.
 - `examples/mcp`: MCP server client config.
 - `examples/deploy`: shadow/canary deploy plan example.
 - `examples/observability`: Langfuse and AgentOps export notes.

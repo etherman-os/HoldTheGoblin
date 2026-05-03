@@ -25,6 +25,7 @@ try {
     'SECURITY.md',
     'PRIVACY.md',
     'docs/CONFIG.md',
+    'examples/github-action/holdthegoblin-verify.yml',
     'examples/deploy/holdthegoblin.deploy.json',
   ]) {
     assert.ok(fileSet.has(required), `Packed tarball missing ${required}.`);

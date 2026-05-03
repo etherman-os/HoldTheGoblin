@@ -1,0 +1,31 @@
+name: HoldTheGoblin
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install npm dependencies
+        if: ${{ hashFiles('package-lock.json') != '' }}
+        run: npm ci
+
+      - name: Validate HoldTheGoblin config
+        run: npm exec --yes --package=holdthegoblin@latest -- holdthegoblin config validate --format json
+
+      - name: Verify with HoldTheGoblin
+        run: npm exec --yes --package=holdthegoblin@latest -- holdthegoblin verify --format markdown
