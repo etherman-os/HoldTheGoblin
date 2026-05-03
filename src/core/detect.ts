@@ -37,7 +37,9 @@ export function detectProject(root: string, config: HoldTheGoblinConfig): Projec
 
   for (const [kind, commands] of Object.entries(config.commands)) {
     for (const overrideCommand of commands ?? []) {
-      testCommands.push(command(`custom:${kind}:${overrideCommand}`, `Custom ${kind}`, overrideCommand, kind as ProjectKind, true, 'Configured override'));
+      const trimmed = overrideCommand.trim();
+      if (trimmed === '') continue;
+      testCommands.push(command(`custom:${kind}:${trimmed}`, `Custom ${kind}`, trimmed, kind as ProjectKind, true, 'Configured override'));
     }
   }
 

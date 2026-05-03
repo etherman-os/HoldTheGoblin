@@ -26,6 +26,7 @@ The server exposes:
 
 - `verify`
 - `doctor`
+- `config_validate`
 - `checkpoint_create`
 - `checkpoint_list`
 - `checkpoint_rollback`
@@ -36,4 +37,4 @@ The server exposes:
 - `tests_generate`
 - `models_providers`
 
-Use `verify` as the completion gate, `checkpoint_create` before risky edits, `handoff_validate` when one agent passes structured output to another, and `deploy_run` for guarded shadow/canary deploy plans.
+Use `config_validate` as a read-only preflight before `verify`, `verify` as the completion gate, `checkpoint_create` before risky edits, `handoff_validate` when one agent passes structured output to another, and `deploy_run` for guarded shadow/canary deploy plans.

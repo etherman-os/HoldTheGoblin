@@ -76,7 +76,7 @@ export function evaluateResults(
   }
 
   const semgrepFindings = findings.filter((finding) => finding.scanner === 'semgrep');
-  const blockingSemgrep = semgrepFindings.filter((finding) => config.failPolicy.semgrepSeverities.includes(finding.severity.toUpperCase()));
+  const blockingSemgrep = semgrepFindings.filter((finding) => includesSeverity(config.failPolicy.semgrepSeverities, finding.severity));
   if (blockingSemgrep.length > 0) {
     checks.push({
       id: 'security:semgrep',
@@ -98,7 +98,7 @@ export function evaluateResults(
   }
 
   const trivyFindings = findings.filter((finding) => finding.scanner === 'trivy');
-  const blockingTrivy = trivyFindings.filter((finding) => config.failPolicy.trivySeverities.includes(finding.severity.toUpperCase()));
+  const blockingTrivy = trivyFindings.filter((finding) => includesSeverity(config.failPolicy.trivySeverities, finding.severity));
   if (blockingTrivy.length > 0) {
     checks.push({
       id: 'security:trivy',

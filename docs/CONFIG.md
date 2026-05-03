@@ -8,6 +8,17 @@ Create it with:
 holdthegoblin init --mode balanced
 ```
 
+Validate it with:
+
+```bash
+holdthegoblin config validate [--path .holdthegoblin/config.json] [--format json]
+holdthegoblin config schema
+```
+
+Invalid config fails closed. HoldTheGoblin reports the exact JSON path for invalid values instead of silently merging unsafe types into defaults.
+
+All sections are optional; omitted values use defaults. Invalid present values block config-loading commands. Scanner severities are normalized to uppercase, and configured command strings are trimmed.
+
 Default shape:
 
 ```json
@@ -60,6 +71,8 @@ Add required verification commands when auto-detection is not enough:
 ```
 
 Configured commands are treated as required test commands. Their stdout and stderr are redacted before being written to reports.
+
+Valid command keys are `javascript`, `python`, `go`, `rust`, `java`, and `unknown`. Each key maps to an array of non-empty command strings after trimming, with at most 50 commands per key.
 
 ## Scanner Policy
 

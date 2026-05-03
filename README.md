@@ -67,7 +67,7 @@ The demo uses the real `holdthegoblin hook claude` entrypoint, not a mocked deci
 | Deploy guard | Runs verify, checkpoint, shadow/canary commands, health checks, rollback command, and checkpoint restore from a deploy plan. |
 | Rollback | Creates local file checkpoints and restores them on demand or during failed deploy phases. |
 | Observability | Writes evidence reports, JSONL event logs, and Langfuse/AgentOps-compatible export payloads under `.holdthegoblin/`. |
-| MCP | Exposes verifier, checkpoint, handoff, deploy, test generation, and observability tools over stdio or Streamable HTTP. |
+| MCP | Exposes verifier, read-only config validation, checkpoint, handoff, deploy, test generation, and observability tools over stdio or Streamable HTTP. |
 
 ## Commands
 
@@ -79,6 +79,8 @@ holdthegoblin verify [--format text|json|markdown]
 holdthegoblin hook claude
 holdthegoblin checkpoint create|list|rollback [--id latest] [--delete-new]
 holdthegoblin handoff validate --schema schema.json --input payload.json
+holdthegoblin config validate [--path .holdthegoblin/config.json] [--format json]
+holdthegoblin config schema
 holdthegoblin events [--limit 20] [--format text|json]
 holdthegoblin doctor
 holdthegoblin mcp
@@ -206,7 +208,7 @@ Local exports are written to `.holdthegoblin/exports/`. `--send` is opt-in. Lang
 
 ## MCP Server
 
-HoldTheGoblin ships a local stdio MCP server so MCP-capable agents can call the same verifier, checkpoint, handoff, and event tools without shelling out manually.
+HoldTheGoblin ships a local stdio MCP server so MCP-capable agents can call the same verifier, read-only config validation, checkpoint, handoff, deploy, test generation, observability, and event tools without shelling out manually.
 
 ```bash
 holdthegoblin mcp
@@ -237,6 +239,7 @@ Available tools:
 
 - `verify`: run tests, security checks, edge-case detection, and evidence reporting.
 - `doctor`: inspect project setup and planned commands.
+- `config_validate`: validate `.holdthegoblin/config.json` before `verify`; this is read-only config checking, not an independent sandbox or hard enforcement layer.
 - `checkpoint_create`, `checkpoint_list`, `checkpoint_rollback`: snapshot and restore local work.
 - `handoff_validate`: validate a JSON handoff payload against a schema.
 - `events`: read recent HoldTheGoblin event logs.

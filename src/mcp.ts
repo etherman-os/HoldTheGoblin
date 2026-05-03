@@ -9,7 +9,7 @@ import { runDeployPlan } from './core/deploy.js';
 import { readEvents } from './core/events.js';
 import { findGitRoot } from './core/git.js';
 import { validateHandoffFiles } from './core/handoff.js';
-import { loadConfig } from './core/config.js';
+import { CONFIG_JSON_SCHEMA, loadConfig, validateProjectConfig } from './core/config.js';
 import { listModelProviders } from './core/llm.js';
 import { exportObservability } from './core/observability.js';
 import { renderMarkdownReport, renderTextSummary } from './core/output.js';
@@ -111,6 +111,28 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
     }
     return projectRoot;
   };
+
+  server.registerTool(
+    'config_validate',
+    {
+      title: 'Validate HoldTheGoblin configuration',
+      description: 'Validate .holdthegoblin/config.json against the documented schema.',
+      inputSchema: rootSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+      },
+    },
+    async ({ root }) => {
+      const projectRoot = await resolveServerRoot(root);
+      const result = validateProjectConfig(projectRoot);
+      return {
+        isError: !result.ok,
+        content: [{ type: 'text', text: JSON.stringify({ ...result, schema: CONFIG_JSON_SCHEMA }, null, 2) }],
+      };
+    }
+  );
 
   server.registerTool(
     'verify',

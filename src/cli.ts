@@ -15,7 +15,7 @@ import { renderTextSummary } from './core/output.js';
 import { readPackageVersion } from './core/package.js';
 import { resolveInsideProject } from './core/paths.js';
 import { commandExists } from './core/runner.js';
-import { loadConfig } from './core/config.js';
+import { CONFIG_JSON_SCHEMA, configPath, loadConfig, validateConfigFile, validateProjectConfig } from './core/config.js';
 import { generateTests, type TestGenerationProvider } from './core/testgen.js';
 import { verify } from './core/verify.js';
 
@@ -52,6 +52,8 @@ async function main(): Promise<number> {
         return cmdCheckpoint(args, root);
       case 'handoff':
         return cmdHandoff(args);
+      case 'config':
+        return cmdConfig(args, root);
       case 'doctor':
         return cmdDoctor(root);
       case 'events':
@@ -173,6 +175,32 @@ async function cmdHandoff(args: ParsedArgs): Promise<number> {
   console.log('Handoff payload is invalid:');
   for (const issue of result.issues) console.log(`- ${issue.path}: ${issue.message}`);
   return 1;
+}
+
+async function cmdConfig(args: ParsedArgs, root: string): Promise<number> {
+  switch (args.subcommand) {
+    case 'validate': {
+      const file = stringFlag(args, 'path');
+      const result = file ? validateConfigFile(resolveInsideProject(root, file)) : validateProjectConfig(root);
+      if (stringFlag(args, 'format') === 'json') {
+        console.log(JSON.stringify(result, null, 2));
+        return result.ok ? 0 : 1;
+      }
+      if (result.ok) {
+        console.log(`HoldTheGoblin config is valid: ${result.path ?? configPath(root)}`);
+        return 0;
+      }
+      console.log(`HoldTheGoblin config is invalid: ${result.path ?? configPath(root)}`);
+      for (const issue of result.issues) console.log(`- ${issue.path}: ${issue.message}`);
+      return 1;
+    }
+    case 'schema': {
+      console.log(JSON.stringify(CONFIG_JSON_SCHEMA, null, 2));
+      return 0;
+    }
+    default:
+      throw new Error('Usage: holdthegoblin config validate [--path .holdthegoblin/config.json] [--format json] OR holdthegoblin config schema');
+  }
 }
 
 async function cmdDoctor(root: string): Promise<number> {
@@ -436,7 +464,7 @@ function collectFlags(args: ParsedArgs, key: string): string[] {
 }
 
 function commandAcceptsSubcommand(command: string | undefined): boolean {
-  return new Set(['hook', 'checkpoint', 'handoff', 'deploy', 'observability', 'tests', 'models']).has(command ?? '');
+  return new Set(['hook', 'checkpoint', 'handoff', 'config', 'deploy', 'observability', 'tests', 'models']).has(command ?? '');
 }
 
 const BOOLEAN_FLAGS = new Set(['delete-new', 'dry-run', 'send', 'help', 'h', 'allow-dangerous']);
@@ -462,6 +490,8 @@ Usage:
   holdthegoblin hook claude
   holdthegoblin checkpoint create|list|rollback [--id latest] [--delete-new]
   holdthegoblin handoff validate --schema schema.json --input payload.json
+  holdthegoblin config validate [--path .holdthegoblin/config.json] [--format json]
+  holdthegoblin config schema
   holdthegoblin doctor
   holdthegoblin events [--limit 20] [--format text|json]
   holdthegoblin mcp

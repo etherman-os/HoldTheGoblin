@@ -118,6 +118,7 @@ export function scanSecrets(root: string): Finding[] {
       if (entropyEnabled) {
         for (const candidate of extractQuotedCandidates(line)) {
           if (looksLikePath(candidate)) continue;
+          if (looksLikeKnownPublicReferenceUrl(candidate)) continue;
           if (candidate.length >= 32 && shannonEntropy(candidate) >= 4.2 && /[A-Za-z]/.test(candidate) && /\d/.test(candidate)) {
             findings.push({
               scanner: 'secret',
@@ -239,6 +240,23 @@ function looksLikePath(value: string): boolean {
     normalized.startsWith('../') ||
     /^[A-Za-z]:\//.test(normalized)
   );
+}
+
+function looksLikeKnownPublicReferenceUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      url.username === '' &&
+      url.password === '' &&
+      url.search === '' &&
+      url.hash === '' &&
+      url.hostname === 'json-schema.org' &&
+      /^\/draft\/\d{4}-\d{2}\/schema$/.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
 }
 
 function shannonEntropy(value: string): number {

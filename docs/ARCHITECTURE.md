@@ -2,7 +2,7 @@
 
 HoldTheGoblin is a local-first verifier with these integration surfaces:
 
-- CLI: `holdthegoblin verify`, `hook`, `checkpoint`, `handoff`, `events`, `doctor`, `mcp`, `mcp-http`, `deploy`, `observability`, and `tests`.
+- CLI: `holdthegoblin verify`, `hook`, `checkpoint`, `handoff`, `config`, `events`, `doctor`, `mcp`, `mcp-http`, `deploy`, `observability`, and `tests`.
 - Agent project assets: Claude Code hooks, Cursor rules, Codex/Warp `AGENTS.md` rules, and agent skills.
 - SDK/MCP: exported TypeScript functions and a stdio MCP server for MCP-capable agents.
 - Framework adapters: dependency-light LangGraph and CrewAI helpers.
@@ -10,7 +10,7 @@ HoldTheGoblin is a local-first verifier with these integration surfaces:
 
 ## Verification Flow
 
-1. Load `.holdthegoblin/config.json` or defaults.
+1. Load defaults or validate `.holdthegoblin/config.json`; invalid config exits non-zero before checks run.
 2. Detect project type and planned test/security commands.
 3. Read changed files from git when available.
 4. Run deterministic edge-case analysis.

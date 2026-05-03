@@ -63,6 +63,7 @@ function runMcpSmoke() {
   for (const expected of [
     '"name":"verify"',
     '"name":"doctor"',
+    '"name":"config_validate"',
     '"name":"checkpoint_create"',
     '"name":"checkpoint_list"',
     '"name":"checkpoint_rollback"',
@@ -103,7 +104,7 @@ async function runMcpHttpSmoke() {
     const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`));
     await client.connect(transport);
     const tools = await client.listTools();
-    for (const expected of ['verify', 'doctor', 'deploy_run', 'observability_export', 'tests_generate', 'models_providers']) {
+    for (const expected of ['verify', 'doctor', 'config_validate', 'deploy_run', 'observability_export', 'tests_generate', 'models_providers']) {
       if (!tools.tools.some((tool) => tool.name === expected)) throw new Error(`MCP HTTP missing tool: ${expected}`);
     }
     const doctor = await client.callTool({ name: 'doctor', arguments: { root } });

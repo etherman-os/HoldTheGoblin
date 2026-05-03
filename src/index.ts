@@ -2,7 +2,17 @@ export { verify, type VerifyOptions } from './core/verify.js';
 export { createMcpServer, runMcpServer, runMcpHttpServer } from './mcp.js';
 export { detectProject } from './core/detect.js';
 export { findEdgeCases } from './core/edgecases.js';
-export { loadConfig, writeDefaultConfig } from './core/config.js';
+export {
+  CONFIG_JSON_SCHEMA,
+  loadConfig,
+  validateConfigFile,
+  validateConfigObject,
+  validateProjectConfig,
+  writeDefaultConfig,
+  type ConfigInput,
+  type ConfigValidationIssue,
+  type ConfigValidationResult,
+} from './core/config.js';
 export { evaluateCommandRisk, evaluatePathReadRisk } from './core/risk.js';
 export { validateHandoff, validateHandoffFiles, type ValidationResult, type ValidationIssue } from './core/handoff.js';
 export { createCheckpoint, listCheckpoints, rollbackCheckpoint, type CheckpointMeta } from './core/checkpoint.js';

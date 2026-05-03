@@ -26,6 +26,21 @@ test('built-in secret scanner ignores high-entropy absolute paths', () => {
   assert.deepEqual(scanSecrets(dir), []);
 });
 
+test('built-in secret scanner ignores standard public schema URLs', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'htg-secret-url-'));
+  writeFileSync(path.join(dir, 'schema.ts'), 'export const schema = "https://json-schema.org/draft/2020-12/schema";\n');
+
+  assert.deepEqual(scanSecrets(dir), []);
+});
+
+test('built-in secret scanner still flags high-entropy URL path tokens', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'htg-secret-url-token-'));
+  const webhook = 'https://hooks.example.invalid/services/AbCdEfGhIjKlMnOpQrStUvWxYz1234567890'; // holdthegoblin: allow-secret
+  writeFileSync(path.join(dir, 'webhook.ts'), `export const webhook = "${webhook}";\n`);
+
+  assert.ok(scanSecrets(dir).some((finding) => finding.ruleId === 'high-entropy'));
+});
+
 test('parses semgrep json findings', () => {
   const findings = parseSemgrep(JSON.stringify({
     results: [{ check_id: 'x.y', path: 'a.js', start: { line: 2 }, extra: { severity: 'ERROR', message: 'bad' } }],
@@ -133,6 +148,25 @@ test('security scanner truncated json is reported as skipped warning input', asy
   } finally {
     process.env.PATH = previousPath;
   }
+});
+
+test('scanner severity blocking is case-insensitive for programmatic config', () => {
+  const config = {
+    ...DEFAULT_CONFIG,
+    failPolicy: {
+      ...DEFAULT_CONFIG.failPolicy,
+      semgrepSeverities: ['error'],
+      trivySeverities: ['high', 'critical'],
+    },
+  };
+
+  const checks = evaluateResults(config, [], [
+    { scanner: 'semgrep', severity: 'ERROR', message: 'bad', ruleId: 'x' },
+    { scanner: 'trivy', severity: 'CRITICAL', message: 'bad', ruleId: 'CVE-1' },
+  ], []);
+
+  assert.equal(checks.find((check) => check.id === 'security:semgrep')?.status, 'fail');
+  assert.equal(checks.find((check) => check.id === 'security:trivy')?.status, 'fail');
 });
 
 test('configuration policy downgrades are explicit warnings or blocking release findings', () => {
