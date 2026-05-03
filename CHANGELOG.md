@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.2
+
+- Hardened command timeouts to terminate process trees instead of only the shell wrapper.
+- Made truncated scanner JSON fail closed as skipped evidence instead of silently parsing partial output.
+- Broadened sensitive path blocking for `.npmrc`, `.netrc`, Kubernetes, Docker, cloud credential, private key, and shell upload references.
+- Added fail-closed malformed Claude hook handling and `LS` sensitive path denial.
+- Scoped deploy, test generation, observability, and MCP handoff paths to the project root.
+- Validated checkpoint metadata paths and skipped symlink snapshots.
+- Redacted additional token forms, bearer headers, JWTs, URL credentials, events, and observability command metadata.
+- Improved CLI boolean parsing, command-local help, deploy approval semantics, MCP HTTP network hardening, CI permissions, provenance publishing workflow, config/privacy docs, and tests.
+
 ## 0.1.1
 
 - Hardened evidence redaction for command output, verification reports, deploy reports, observability send errors, and model-provider errors.

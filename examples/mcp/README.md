@@ -7,7 +7,7 @@ holdthegoblin mcp
 holdthegoblin mcp-http --host 127.0.0.1 --port 3333
 ```
 
-When binding `mcp-http` outside loopback, set `--auth-token` or `HOLDTHEGOBLIN_MCP_HTTP_TOKEN`.
+When binding `mcp-http` outside loopback, set `HOLDTHEGOBLIN_MCP_HTTP_TOKEN` or `--auth-token` and pass at least one `--allowed-host`.
 
 Use this shape in MCP-capable clients:
 

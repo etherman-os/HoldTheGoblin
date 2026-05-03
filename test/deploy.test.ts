@@ -131,7 +131,7 @@ test('deploy plan paths resolve relative to the supplied root', async () => {
   }
 });
 
-test('deploy guard verifies before deploy phases', async () => {
+test('deploy guard verifies before checkpoint and deploy phases', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'htg-deploy-verify-'));
   writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { test: 'node -e ""' } }));
   const planPath = path.join(root, 'deploy.json');
@@ -139,13 +139,13 @@ test('deploy guard verifies before deploy phases', async () => {
     version: 1,
     name: 'verify-first',
     verify: true,
-    checkpoint: false,
+    checkpoint: true,
     shadow: { command: 'node -e "process.exit(0)"' },
   }));
 
   const result = await runDeployPlan({ root, planPath });
   assert.equal(result.ok, true);
-  assert.equal(result.phases.map((phase) => phase.phase).join(','), 'verify,shadow');
+  assert.equal(result.phases.map((phase) => phase.phase).join(','), 'verify,checkpoint,shadow');
 });
 
 test('deploy guard stops before deploy when verification fails', async () => {
@@ -182,6 +182,37 @@ test('deploy dry-run marks rollback phases as on-failure only', async () => {
   assert.deepEqual(result.phases.map((phase) => [phase.phase, phase.onFailure === true]), [
     ['shadow', false],
     ['rollback', true],
-    ['checkpointRollback', true],
   ]);
+});
+
+test('deploy rejects plan paths outside the project root', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-deploy-root-'));
+  const outside = path.join(tmpdir(), `htg-outside-${Date.now()}.json`);
+  writeFileSync(outside, JSON.stringify({
+    version: 1,
+    name: 'outside',
+    verify: false,
+    checkpoint: false,
+  }));
+
+  await assert.rejects(
+    runDeployPlan({ root, planPath: outside }),
+    /escapes project root/
+  );
+});
+
+test('deploy allowDangerous requires an external run approval', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-deploy-ask-approval-'));
+  const planPath = path.join(root, 'deploy.json');
+  writeFileSync(planPath, JSON.stringify({
+    version: 1,
+    name: 'ask-approval',
+    verify: false,
+    checkpoint: false,
+    shadow: { command: 'terraform destroy', allowDangerous: true },
+  }));
+
+  const blocked = await runDeployPlan({ root, planPath });
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.phases[0].commandResult?.stderr ?? '', /--allow-dangerous/);
 });

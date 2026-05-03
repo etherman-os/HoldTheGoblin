@@ -21,11 +21,11 @@ HoldTheGoblin is a local-first verifier with three integration surfaces:
 
 ## Deploy Flow
 
-`holdthegoblin deploy run --plan <file>` reads a versioned deploy plan, creates a checkpoint, runs verification, executes shadow/canary/promote commands, and runs rollback command plus checkpoint restore on failure.
+`holdthegoblin deploy run --plan <file>` reads a versioned deploy plan, runs verification, creates a checkpoint, executes shadow/canary/promote commands, and runs rollback command plus checkpoint restore on failure.
 
 The deploy guard is command-runner based. It deliberately does not embed cloud-provider credentials or assume a specific platform.
 
-Deploy commands that match hard-deny risk rules are blocked even if a plan sets `allowDangerous`. Human-approval `ask` rules require `allowDangerous: true` in the reviewed plan.
+Deploy commands that match hard-deny risk rules are blocked even if a plan sets `allowDangerous`. Human-approval `ask` rules require `allowDangerous: true` in the reviewed plan plus the explicit run flag `--allow-dangerous`.
 
 ## Observability Flow
 

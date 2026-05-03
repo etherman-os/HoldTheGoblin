@@ -1,4 +1,4 @@
-import { cpSync, writeFileSync } from 'node:fs';
+import { renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { appPath, ensureAppDirs } from './config.js';
 import { appendEvent } from './events.js';
@@ -14,9 +14,10 @@ export function writeReports(root: string, result: VerifyResult): VerifyResult {
   const latestPath = appPath(root, 'latest.md');
 
   const withPath = redactSensitiveData({ ...result, reportPath: latestPath });
-  writeFileSync(jsonPath, JSON.stringify(withPath, null, 2) + '\n');
-  writeFileSync(markdownPath, renderMarkdownReport(withPath));
-  cpSync(markdownPath, latestPath);
+  writeAtomic(jsonPath, JSON.stringify(withPath, null, 2) + '\n');
+  const markdown = renderMarkdownReport(withPath);
+  writeAtomic(markdownPath, markdown);
+  writeAtomic(latestPath, markdown);
   appendEvent(root, {
     type: 'verify',
     ok: withPath.ok,
@@ -35,4 +36,10 @@ export function writeReports(root: string, result: VerifyResult): VerifyResult {
 export function runId(): string {
   const stamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
   return `${stamp}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function writeAtomic(file: string, content: string): void {
+  const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  writeFileSync(tmp, content);
+  renameSync(tmp, file);
 }

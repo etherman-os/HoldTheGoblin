@@ -1,9 +1,9 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { z } from 'zod';
 import { createCheckpoint, rollbackCheckpoint, type CheckpointMeta } from './checkpoint.js';
 import { appPath, ensureAppDirs, loadConfig } from './config.js';
 import { appendEvent } from './events.js';
-import { resolveProjectPath } from './paths.js';
+import { resolveInsideProject } from './paths.js';
 import { redactSensitiveData, redactSensitiveText } from './redact.js';
 import { evaluateCommandRisk } from './risk.js';
 import { runShell } from './runner.js';
@@ -83,9 +83,10 @@ export async function runDeployPlan(options: {
   root: string;
   planPath: string;
   dryRun?: boolean;
+  allowDangerous?: boolean;
 }): Promise<DeployRunResult> {
   const root = options.root;
-  const planPath = resolveProjectPath(root, options.planPath);
+  const planPath = resolveInsideProject(root, options.planPath);
   if (!existsSync(planPath)) throw new Error(`Deploy plan not found: ${planPath}`);
 
   const config = loadConfig(root);
@@ -109,11 +110,6 @@ export async function runDeployPlan(options: {
     return result;
   }
 
-  if (plan.checkpoint) {
-    checkpoint = await createCheckpoint(root, `deploy:${plan.name}`);
-    phases.push({ phase: 'checkpoint', ok: true, checkpoint });
-  }
-
   if (plan.verify) {
     const verifyResult = await verify({ root });
     phases.push({ phase: 'verify', ok: verifyResult.ok, verifyResult });
@@ -124,14 +120,19 @@ export async function runDeployPlan(options: {
     }
   }
 
+  if (plan.checkpoint) {
+    checkpoint = await createCheckpoint(root, `deploy:${plan.name}`);
+    phases.push({ phase: 'checkpoint', ok: true, checkpoint });
+  }
+
   for (const phase of ['shadow', 'shadowHealth', 'canary', 'canaryHealth', 'promote'] as const) {
     const spec = plan[phase];
     if (!spec) continue;
-    const commandResult = await runDeployCommand(phase, spec, root, config.execution.timeoutMs, config.execution.retries);
+    const commandResult = await runDeployCommand(phase, spec, root, config.execution.timeoutMs, config.execution.retries, options.allowDangerous === true);
     phases.push({ phase, ok: commandResult.exitCode === 0 && !commandResult.timedOut, commandResult });
     if (commandResult.exitCode !== 0 || commandResult.timedOut) {
       if (plan.rollback) {
-        const rollbackResult = await runDeployCommand('rollback', plan.rollback, root, config.execution.timeoutMs, 0);
+        const rollbackResult = await runDeployCommand('rollback', plan.rollback, root, config.execution.timeoutMs, 0, options.allowDangerous === true);
         phases.push({ phase: 'rollback', ok: rollbackResult.exitCode === 0 && !rollbackResult.timedOut, commandResult: rollbackResult });
       }
       if (checkpoint && plan.rollbackCheckpoint) {
@@ -158,7 +159,7 @@ function plannedPhases(plan: DeployPlan): Array<{ phase: DeployPhaseResult['phas
     if (plan[phase]) phases.push({ phase });
   }
   if (plan.rollback) phases.push({ phase: 'rollback', onFailure: true });
-  if (plan.rollbackCheckpoint) phases.push({ phase: 'checkpointRollback', onFailure: true });
+  if (plan.checkpoint && plan.rollbackCheckpoint) phases.push({ phase: 'checkpointRollback', onFailure: true });
   return phases;
 }
 
@@ -167,10 +168,11 @@ async function runDeployCommand(
   spec: z.infer<typeof commandSchema>,
   root: string,
   defaultTimeoutMs: number,
-  defaultRetries: number
+  defaultRetries: number,
+  allowDangerous: boolean
 ): Promise<CommandResult> {
   const risk = evaluateCommandRisk(spec.command);
-  if (risk.decision === 'deny' || (risk.decision === 'ask' && !spec.allowDangerous)) {
+  if (risk.decision === 'deny' || (risk.decision === 'ask' && !(spec.allowDangerous && allowDangerous))) {
     return {
       id: `deploy:${phase}`,
       label: `Deploy ${phase}`,
@@ -180,7 +182,7 @@ async function runDeployCommand(
       stdout: '',
       stderr: risk.decision === 'deny'
         ? `Blocked by HoldTheGoblin deploy guard: ${risk.reason}`
-        : `Blocked by HoldTheGoblin deploy guard: ${risk.reason} Set allowDangerous only after human review.`,
+        : `Blocked by HoldTheGoblin deploy guard: ${risk.reason} Set allowDangerous in the reviewed plan and pass --allow-dangerous only after human review.`,
       durationMs: 0,
       timedOut: false,
       attempts: 0,
@@ -223,7 +225,7 @@ function finalizeDeployResult(input: {
     phases: input.phases,
     reportPath: appPath(input.root, 'deploy-latest.json'),
   });
-  writeFileSync(result.reportPath, JSON.stringify(result, null, 2) + '\n');
+  writeAtomic(result.reportPath, JSON.stringify(result, null, 2) + '\n');
   return result;
 }
 
@@ -241,4 +243,10 @@ function appendDeployEvent(result: DeployRunResult): void {
       phases: result.phases.map((phase) => ({ phase: phase.phase, ok: phase.ok, skipped: phase.skipped })),
     },
   });
+}
+
+function writeAtomic(file: string, content: string): void {
+  const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  writeFileSync(tmp, content);
+  renameSync(tmp, file);
 }

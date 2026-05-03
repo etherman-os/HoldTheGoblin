@@ -1,43 +1,36 @@
 # Roadmap
 
-## V0.1 Release Candidate
+HoldTheGoblin is a safety tool, so roadmap items need measurable enforcement or evidence value.
 
-Implemented:
+## Now
 
-- Local verifier with evidence reports.
-- Built-in secret scanning.
-- Optional Semgrep and Trivy execution.
-- Deterministic edge-case suggestions.
-- Claude Code hard hook integration.
-- Cursor, Codex, and Warp project guidance.
-- Agent skills for `.agents`, `.codex`, and `.warp`.
-- Checkpoint create/list/rollback.
-- JSON schema handoff validation.
-- JSONL observability events.
-- Local stdio MCP server.
-- Streamable HTTP MCP server for local/network-hosted tool access.
-- Guarded deploy plans with verify, checkpoint, shadow/canary, health checks, rollback command, and checkpoint restore.
-- Langfuse and AgentOps-compatible observability exports.
-- Deterministic and LLM-assisted test plan generation with local, cloud, and OpenAI-compatible providers.
-- Dependency-light LangGraph and CrewAI adapters.
-- CI, smoke tests, demo fixture, and npm package dry-run.
+- Harden command execution and scanner evidence handling.
+  Acceptance: timed-out commands terminate process trees, structured scanner output cannot be silently truncated into a skipped pass, and tests cover both cases.
+- Broaden sensitive-path and redaction coverage.
+  Acceptance: hooks/checkpoints/reports cover common local credential stores and token formats.
+- Improve OSS trust basics.
+  Acceptance: CI permissions are explicit, publish provenance workflow exists, privacy/config docs are present, and release checks remain green.
 
-## V0.2
+## Next
 
-- Configurable custom policy packs.
+- First-class downstream GitHub Action template.
+  Acceptance: users can add a copy-paste workflow that runs `holdthegoblin verify` on pull requests.
+- Config validation and schema.
+  Acceptance: `.holdthegoblin/config.json` has a documented JSON schema and `config validate` reports precise errors.
 - HTML evidence report.
-- First-class GitHub Action template for downstream projects.
-- Provider-specific observability SDK bridges where the upstream APIs are stable enough to avoid brittle direct ingestion.
+  Acceptance: local report renders checks, findings, edge-case suggestions, and command summaries without exposing raw secrets.
+- Policy downgrade detection.
+  Acceptance: disabling verification, checkpointing, secret scanning, or test failure blocking is surfaced as a blocking finding in strict/release workflows unless explicitly approved outside repo-controlled files.
 
-## V1
+## Later
 
-- Signed release provenance.
 - Organization policy management.
+- Signed release provenance beyond npm provenance where useful.
 - Native package split for framework adapters if demand justifies separate installs.
 - Deeper OpenAI Agents SDK adapter once its stable hook surface is settled for this use case.
 
-## Non-Goals For V0
+## Non-Goals
 
 - Claiming advisory rules are hard sandboxing.
 - Claiming skipped external scanners passed.
-- Replacing production backups, least-privilege credentials, or CI branch protection.
+- Replacing production backups, least-privilege credentials, code review, or CI branch protection.

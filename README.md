@@ -1,5 +1,9 @@
 # HoldTheGoblin
 
+[![CI](https://github.com/etherman-os/HoldTheGoblin/actions/workflows/ci.yml/badge.svg)](https://github.com/etherman-os/HoldTheGoblin/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](package.json)
+
 **Stops unsafe coding agents before they call it done.**
 
 HoldTheGoblin is a local-first verification layer for AI coding agents. It blocks dangerous tool calls where the host agent supports hard hooks, runs tests and security scans before completion, writes evidence reports, and gives the agent concrete feedback to fix the work.
@@ -80,7 +84,7 @@ holdthegoblin doctor
 holdthegoblin mcp
 holdthegoblin mcp-http [--host 127.0.0.1] [--port 3333] [--allowed-host localhost] [--auth-token token]
 holdthegoblin deploy init [--output holdthegoblin.deploy.json]
-holdthegoblin deploy run --plan holdthegoblin.deploy.json [--dry-run] [--format json]
+holdthegoblin deploy run --plan holdthegoblin.deploy.json [--dry-run] [--allow-dangerous] [--format json]
 holdthegoblin observability export --provider langfuse|agentops|all [--send] [--timeout-ms 15000]
 holdthegoblin tests generate [--provider deterministic|ollama|ollama-cloud|openai-compatible|openai|groq|openrouter|anthropic|minimax|zai|kimi|deepseek] [--model model] [--base-url url] [--timeout-ms 60000]
 holdthegoblin models providers [--format json]
@@ -178,7 +182,7 @@ holdthegoblin deploy run --plan holdthegoblin.deploy.json
 
 A deploy plan can define `shadow`, `shadowHealth`, `canary`, `canaryHealth`, `promote`, and `rollback` commands. HoldTheGoblin runs verification first, creates a local checkpoint by default, and restores checkpoint-tracked files if a guarded deploy phase fails.
 
-Commands that match destructive or human-approval risk rules are blocked by default. Hard-deny rules cannot be bypassed by deploy-plan JSON. A deploy plan can set `allowDangerous: true` only for human-approval `ask` rules after separate review.
+Commands that match destructive or human-approval risk rules are blocked by default. Hard-deny rules cannot be bypassed by deploy-plan JSON. Human-approval `ask` rules require both `allowDangerous: true` in the reviewed plan and an explicit `--allow-dangerous` run flag.
 
 ## Observability Export
 
@@ -196,6 +200,13 @@ HoldTheGoblin ships a local stdio MCP server so MCP-capable agents can call the 
 ```bash
 holdthegoblin mcp
 holdthegoblin mcp-http --host 127.0.0.1 --port 3333
+```
+
+When binding beyond loopback, pass a strong bearer token and explicit allowed hosts:
+
+```bash
+HOLDTHEGOBLIN_MCP_HTTP_TOKEN="$(openssl rand -hex 24)" \
+  holdthegoblin mcp-http --host 0.0.0.0 --port 3333 --allowed-host your-host.example
 ```
 
 Example MCP client config:
@@ -288,7 +299,9 @@ CI runs the same checks on Node 20 and 22.
 Project docs:
 
 - `docs/ARCHITECTURE.md`: verifier and integration design.
+- `docs/CONFIG.md`: policy, execution, scanner, and observability configuration.
 - `docs/ROADMAP.md`: what is implemented now and what stays on the V1 roadmap.
+- `PRIVACY.md`: local reads/writes, opt-in network egress, and redaction scope.
 - `CONTRIBUTING.md`: local development and release checklist.
 - `SECURITY.md`: vulnerability reporting and guardrail scope.
 
@@ -296,11 +309,11 @@ Project docs:
 
 - Cursor rules are advisory; they cannot enforce a hard block by themselves.
 - Codex and Warp project rules are advisory; use CI or Claude Code hooks for hard enforcement.
-- `mcp-http` exposes Streamable HTTP on a host/port. It uses MCP SDK host validation. When binding beyond localhost, `--auth-token` or `HOLDTHEGOBLIN_MCP_HTTP_TOKEN` is required; still put TLS and network policy in front of it.
+- `mcp-http` exposes Streamable HTTP on a host/port. It uses MCP SDK host validation. When binding beyond localhost, `HOLDTHEGOBLIN_MCP_HTTP_TOKEN` or `--auth-token` plus at least one `--allowed-host` is required; still put TLS and network policy in front of it.
 - Semgrep and Trivy are optional external CLIs. If missing, HoldTheGoblin reports them as skipped.
 - Deterministic test generation writes a test plan, not committed test files. External providers require the user to bring their own API key/subscription. HoldTheGoblin does not resell model access.
 - Langfuse direct send uses the legacy ingestion API shape; Langfuse recommends OpenTelemetry for new ingestion pipelines. AgentOps export is OTLP-style JSON intended for a relay or SDK bridge.
-- Deploy guard runs the commands you configure. It is not a replacement for cloud-provider permissions, backups, or production deployment controls.
+- Deploy guard runs the commands you configure. It blocks known risky command text and requires explicit approval for human-review rules, but it is not a sandbox or a replacement for cloud-provider permissions, backups, or production deployment controls.
 
 For intentional fake credentials in tests or demos, add `holdthegoblin: allow-secret` on that line.
 

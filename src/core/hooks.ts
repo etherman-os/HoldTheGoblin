@@ -7,6 +7,7 @@ import { verify } from './verify.js';
 
 export async function handleClaudeHook(stdin = readStdin()): Promise<{ stdout: string; exitCode: number }> {
   const input = parseHookInput(stdin);
+  if (!input) return denyPreTool('HoldTheGoblin: malformed hook input.');
   const event = input.hook_event_name;
   const root = await findGitRoot(input.cwd ?? process.cwd());
 
@@ -58,7 +59,7 @@ function denyPreTool(reason: string): { stdout: string; exitCode: number } {
 }
 
 function shouldBlockSensitiveTool(toolName: string | undefined): boolean {
-  return toolName === 'Read' || toolName === 'Grep' || toolName === 'Glob' || hasMutationTool(toolName);
+  return toolName === 'Read' || toolName === 'Grep' || toolName === 'Glob' || toolName === 'LS' || hasMutationTool(toolName);
 }
 
 function sensitiveToolPath(input: Record<string, unknown> | undefined): string | undefined {
@@ -68,7 +69,7 @@ function sensitiveToolPath(input: Record<string, unknown> | undefined): string |
     input.path,
     input.notebook_path,
     input.pattern,
-    ...Object.values(input).filter((value) => typeof value === 'string'),
+    ...flattenStrings(input),
   ];
   for (const value of values) {
     if (typeof value === 'string' && isSensitivePath(value)) return value;
@@ -139,13 +140,20 @@ function renderAgentContext(result: Awaited<ReturnType<typeof verify>>): string 
   return report.length > 9000 ? `${report.slice(0, 9000)}\n\nFull report: ${result.reportPath}` : report;
 }
 
-function parseHookInput(stdin: string): HookInput {
+function parseHookInput(stdin: string): HookInput | undefined {
   if (!stdin.trim()) return {};
   try {
     return JSON.parse(stdin) as HookInput;
   } catch {
-    return {};
+    return undefined;
   }
+}
+
+function flattenStrings(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap((item) => flattenStrings(item));
+  if (!value || typeof value !== 'object') return [];
+  return Object.values(value as Record<string, unknown>).flatMap((item) => flattenStrings(item));
 }
 
 function readStdin(): string {

@@ -45,6 +45,8 @@ function runOnce(command: PlannedCommand, options: RunOptions, attempts: number)
   return new Promise((resolve) => {
     let stdout = '';
     let stderr = '';
+    let stdoutTruncated = false;
+    let stderrTruncated = false;
     let timedOut = false;
     let settled = false;
 
@@ -53,25 +55,32 @@ function runOnce(command: PlannedCommand, options: RunOptions, attempts: number)
       shell: true,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, CI: process.env.CI ?? '1' },
+      detached: process.platform !== 'win32',
     });
 
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGTERM');
+      terminateProcessTree(child.pid, 'SIGTERM');
       setTimeout(() => {
-        if (!settled) child.kill('SIGKILL');
+        if (!settled) terminateProcessTree(child.pid, 'SIGKILL');
       }, 2500).unref();
     }, options.timeoutMs);
     timer.unref();
 
     child.stdout?.on('data', (chunk: Buffer) => {
       stdout += chunk.toString();
-      if (stdout.length > 120_000) stdout = stdout.slice(-120_000);
+      if (stdout.length > 120_000) {
+        stdout = stdout.slice(-120_000);
+        stdoutTruncated = true;
+      }
     });
 
     child.stderr?.on('data', (chunk: Buffer) => {
       stderr += chunk.toString();
-      if (stderr.length > 120_000) stderr = stderr.slice(-120_000);
+      if (stderr.length > 120_000) {
+        stderr = stderr.slice(-120_000);
+        stderrTruncated = true;
+      }
     });
 
     child.on('error', (error) => {
@@ -89,6 +98,8 @@ function runOnce(command: PlannedCommand, options: RunOptions, attempts: number)
         durationMs: Date.now() - started,
         timedOut,
         attempts,
+        stdoutTruncated,
+        stderrTruncated,
       });
     });
 
@@ -107,6 +118,8 @@ function runOnce(command: PlannedCommand, options: RunOptions, attempts: number)
         durationMs: Date.now() - started,
         timedOut,
         attempts,
+        stdoutTruncated,
+        stderrTruncated,
       });
     });
   });
@@ -123,4 +136,24 @@ function isRetryable(result: CommandResult): boolean {
     combined.includes('rate limit') ||
     combined.includes('network')
   );
+}
+
+function terminateProcessTree(pid: number | undefined, signal: NodeJS.Signals): void {
+  if (!pid) return;
+  if (process.platform === 'win32') {
+    const args = ['/pid', String(pid), '/T', signal === 'SIGKILL' ? '/F' : undefined].filter(Boolean) as string[];
+    const killer = spawn('taskkill', args, { stdio: 'ignore', windowsHide: true });
+    killer.on('error', () => undefined);
+    return;
+  }
+
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      process.kill(pid, signal);
+    } catch {
+      // Process already exited.
+    }
+  }
 }

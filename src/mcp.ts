@@ -13,7 +13,7 @@ import { loadConfig } from './core/config.js';
 import { listModelProviders } from './core/llm.js';
 import { exportObservability } from './core/observability.js';
 import { renderMarkdownReport, renderTextSummary } from './core/output.js';
-import { resolveProjectPath } from './core/paths.js';
+import { isInsidePath, resolveInsideProject } from './core/paths.js';
 import { generateTests } from './core/testgen.js';
 import { verify } from './core/verify.js';
 
@@ -21,15 +21,25 @@ const rootSchema = {
   root: z.string().optional().describe('Project directory. Defaults to the current working directory.'),
 };
 
-export async function runMcpServer(): Promise<void> {
-  const server = createMcpServer();
+export interface McpServerOptions {
+  root?: string;
+}
+
+export async function runMcpServer(options: McpServerOptions = {}): Promise<void> {
+  const server = createMcpServer(options);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
 
-export async function runMcpHttpServer(options: { host: string; port: number; allowedHosts?: string[]; authToken?: string }): Promise<void> {
+export async function runMcpHttpServer(options: { host: string; port: number; allowedHosts?: string[]; authToken?: string; root?: string }): Promise<void> {
   if (!isLoopbackHost(options.host) && !options.authToken) {
     throw new Error('mcp-http requires --auth-token or HOLDTHEGOBLIN_MCP_HTTP_TOKEN when binding outside loopback.');
+  }
+  if (!isLoopbackHost(options.host) && (!options.allowedHosts || options.allowedHosts.length === 0)) {
+    throw new Error('mcp-http requires at least one --allowed-host when binding outside loopback.');
+  }
+  if (!isLoopbackHost(options.host) && options.authToken && options.authToken.length < 16) {
+    throw new Error('mcp-http auth token must be at least 16 characters when binding outside loopback.');
   }
   const app = createMcpExpressApp({
     host: options.host,
@@ -42,15 +52,16 @@ export async function runMcpHttpServer(options: { host: string; port: number; al
     return res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized.' }, id: null });
   });
   app.post('/mcp', async (req: any, res: any) => {
-    const server = createMcpServer();
+    const server = createMcpServer({ root: options.root });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    const cleanup = () => {
+      void transport.close();
+      void server.close();
+    };
+    res.on('close', cleanup);
     try {
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
-      res.on('close', () => {
-        void transport.close();
-        void server.close();
-      });
     } catch (error) {
       if (!res.headersSent) {
         res.status(500).json({
@@ -59,6 +70,7 @@ export async function runMcpHttpServer(options: { host: string; port: number; al
           id: null,
         });
       }
+      cleanup();
     }
   });
   app.get('/mcp', (_req: any, res: any) => {
@@ -84,11 +96,20 @@ function isLoopbackHost(host: string): boolean {
   return host === '127.0.0.1' || host === 'localhost' || host === '::1';
 }
 
-export function createMcpServer(): McpServer {
+export function createMcpServer(options: McpServerOptions = {}): McpServer {
   const server = new McpServer({
     name: 'holdthegoblin',
-    version: '0.1.1',
+    version: '0.1.2',
   });
+  const launchRoot = options.root;
+  const resolveServerRoot = async (root?: string): Promise<string> => {
+    const base = launchRoot ?? process.cwd();
+    const projectRoot = await findGitRoot(root ?? base);
+    if (launchRoot && !isInsidePath(launchRoot, projectRoot)) {
+      throw new Error(`MCP root escapes server root: ${root ?? projectRoot}`);
+    }
+    return projectRoot;
+  };
 
   server.registerTool(
     'verify',
@@ -106,7 +127,7 @@ export function createMcpServer(): McpServer {
       },
     },
     async ({ root, format }) => {
-      const projectRoot = await resolveRoot(root);
+      const projectRoot = await resolveServerRoot(root);
       const result = await verify({ root: projectRoot });
       const text = format === 'json'
         ? JSON.stringify(result, null, 2)
@@ -133,7 +154,7 @@ export function createMcpServer(): McpServer {
       },
     },
     async ({ root }) => {
-      const projectRoot = await resolveRoot(root);
+      const projectRoot = await resolveServerRoot(root);
       const config = loadConfig(projectRoot);
       const detection = detectProject(projectRoot, config);
       return {
@@ -168,7 +189,7 @@ export function createMcpServer(): McpServer {
       },
     },
     async ({ root, note }) => {
-      const projectRoot = await resolveRoot(root);
+      const projectRoot = await resolveServerRoot(root);
       const checkpoint = await createCheckpoint(projectRoot, note);
       return {
         content: [{ type: 'text', text: JSON.stringify(checkpoint, null, 2) }],
@@ -189,7 +210,7 @@ export function createMcpServer(): McpServer {
       },
     },
     async ({ root }) => {
-      const projectRoot = await resolveRoot(root);
+      const projectRoot = await resolveServerRoot(root);
       return {
         content: [{ type: 'text', text: JSON.stringify(listCheckpoints(projectRoot), null, 2) }],
       };
@@ -213,7 +234,7 @@ export function createMcpServer(): McpServer {
       },
     },
     async ({ root, id, deleteNew }) => {
-      const projectRoot = await resolveRoot(root);
+      const projectRoot = await resolveServerRoot(root);
       const checkpoint = rollbackCheckpoint(projectRoot, id ?? 'latest', deleteNew === true);
       return {
         content: [{ type: 'text', text: JSON.stringify(checkpoint, null, 2) }],
@@ -238,8 +259,8 @@ export function createMcpServer(): McpServer {
       },
     },
     async ({ root, schema, input }) => {
-      const projectRoot = await resolveRoot(root);
-      const result = validateHandoffFiles(resolveProjectPath(projectRoot, schema), resolveProjectPath(projectRoot, input));
+      const projectRoot = await resolveServerRoot(root);
+      const result = validateHandoffFiles(resolveInsideProject(projectRoot, schema), resolveInsideProject(projectRoot, input));
       return {
         isError: !result.ok,
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -263,7 +284,7 @@ export function createMcpServer(): McpServer {
       },
     },
     async ({ root, limit }) => {
-      const projectRoot = await resolveRoot(root);
+      const projectRoot = await resolveServerRoot(root);
       return {
         content: [{ type: 'text', text: JSON.stringify(readEvents(projectRoot, limit ?? 20), null, 2) }],
       };
@@ -287,7 +308,7 @@ export function createMcpServer(): McpServer {
       },
     },
     async ({ root, planPath, dryRun }) => {
-      const projectRoot = await resolveRoot(root);
+      const projectRoot = await resolveServerRoot(root);
       const result = await runDeployPlan({ root: projectRoot, planPath, dryRun });
       return {
         isError: !result.ok,
@@ -315,7 +336,7 @@ export function createMcpServer(): McpServer {
       },
     },
     async ({ root, provider, run, send, sendTimeoutMs }) => {
-      const projectRoot = await resolveRoot(root);
+      const projectRoot = await resolveServerRoot(root);
       const result = await exportObservability({ root: projectRoot, provider: provider ?? 'all', run, send, sendTimeoutMs });
       return {
         isError: !result.every((item) => item.ok),
@@ -344,7 +365,7 @@ export function createMcpServer(): McpServer {
       },
     },
     async ({ root, provider, model, baseUrl, timeoutMs, output }) => {
-      const projectRoot = await resolveRoot(root);
+      const projectRoot = await resolveServerRoot(root);
       const result = await generateTests({ root: projectRoot, provider: provider ?? 'deterministic', model, baseUrl, timeoutMs, output });
       return {
         isError: !result.ok,
@@ -371,8 +392,4 @@ export function createMcpServer(): McpServer {
   );
 
   return server;
-}
-
-async function resolveRoot(root?: string): Promise<string> {
-  return findGitRoot(root ?? process.cwd());
 }

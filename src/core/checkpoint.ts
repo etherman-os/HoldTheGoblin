@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { appPath, ensureAppDirs } from './config.js';
-import { relativePosix, toPosixPath } from './paths.js';
+import { assertSafeRelativePath, isInsidePath, relativePosix, toPosixPath } from './paths.js';
 import { isSensitivePath } from './risk.js';
 import { runShell } from './runner.js';
 import type { PlannedCommand } from './types.js';
@@ -57,8 +57,10 @@ export function rollbackCheckpoint(root: string, id?: string, deleteNew = false)
   const checkpoint = resolveCheckpoint(root, id);
   const dir = appPath(root, 'checkpoints', checkpoint.id, 'files');
   for (const file of checkpoint.files) {
-    const source = path.join(dir, file);
-    const target = path.join(root, file);
+    const safeFile = assertSafeRelativePath(file);
+    const source = path.join(dir, safeFile);
+    const target = path.join(root, safeFile);
+    if (!isInsidePath(dir, source) || !isInsidePath(root, target)) throw new Error(`Unsafe checkpoint path: ${file}`);
     if (!existsSync(source)) continue;
     mkdirSync(path.dirname(target), { recursive: true });
     cpSync(source, target);
@@ -103,6 +105,7 @@ async function listGitFiles(root: string): Promise<string[]> {
   };
   const result = await runShell(command, { cwd: root, timeoutMs: 10_000, retries: 0 });
   if (result.exitCode !== 0) return [];
+  if (result.stdoutTruncated) throw new Error('Cannot create checkpoint: git file list exceeded the in-memory limit and was truncated.');
   return result.stdout.split(/\r?\n/).map((line) => toPosixPath(line.trim())).filter(Boolean);
 }
 
@@ -117,6 +120,7 @@ function* walkFiles(root: string): Generator<string> {
 
 function canSnapshot(file: string, relativeFile = toPosixPath(file)): boolean {
   if (!existsSync(file)) return false;
+  if (lstatSync(file).isSymbolicLink()) return false;
   if (isSensitivePath(relativeFile)) return false;
   const parts = toPosixPath(file).split('/');
   if (parts.some((part) => EXCLUDE.has(part))) return false;

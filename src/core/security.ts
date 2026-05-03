@@ -65,6 +65,11 @@ export async function runSecurityScans(root: string, config: HoldTheGoblinConfig
     }
 
     const result = await runShell(command, { cwd: root, timeoutMs: config.execution.timeoutMs, retries: 0 });
+    if (result.stdoutTruncated) {
+      skipped.push(`${command.label} output exceeded the in-memory limit and was truncated`);
+      commandResults.push(summarizeScannerResult(result));
+      continue;
+    }
     if (result.exitCode !== 0 || result.timedOut) {
       skipped.push(`${command.label} failed with ${result.timedOut ? 'timeout' : `exit code ${result.exitCode}`}`);
       commandResults.push(summarizeScannerResult(result));
@@ -247,7 +252,7 @@ function dedupeFindings(findings: Finding[]): Finding[] {
 }
 
 function isLockfile(file: string): boolean {
-  return /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb|Cargo\.lock|poetry\.lock)$/.test(file);
+  return /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb|Cargo\.lock|poetry\.lock)$/.test(file.replace(/[\\/]+/g, '/'));
 }
 
 function isJson(value: string): boolean {

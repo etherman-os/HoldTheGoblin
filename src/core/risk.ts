@@ -8,8 +8,9 @@ export interface RiskResult {
 }
 
 const DENY_COMMANDS: Array<{ pattern: RegExp; reason: string }> = [
-  { pattern: /\b(?:sudo\s+)?rm\s+-(?=[^\s]*r)(?=[^\s]*f)[^\s]+\s+(?:--\s+)?["']?(?:\/\*|\/|~\/\*|~|\$HOME\/\*|\$HOME|\*)["']?(?:\s|$)/, reason: 'Destructive rm target is too broad.' },
-  { pattern: /\b(?:cat|grep|rg|sed|awk|head|tail|less|more|nl)\b[\s\S]*(?:^|[\s"'=])(?:[^\s"']*\/)?(?:\.env(?:\.|$)|id_rsa\b|id_ed25519\b|[^"' ]+\.(?:pem|key)\b|\.aws\/credentials\b|\.ssh\/)/, reason: 'Reading sensitive files through shell commands is blocked.' },
+  { pattern: /(?:^|[\s"'=<>@])(?:[^\s"']*\/)?(?:\.env(?:$|[\w.-]*)|\.npmrc\b|\.pypirc\b|\.netrc\b|\.kube\/(?:config)?|\.docker\/config\.json\b|\.aws\/(?:credentials|config)\b|\.config\/gcloud\/|application_default_credentials\.json\b|\.azure\/|\.gnupg\/|id_(?:rsa|dsa|ecdsa|ed25519)(?:_sk)?\b|[^"' ]+\.(?:pem|key|p12|pfx|jks|keystore)\b|\.ssh\/)/, reason: 'Shell command references a sensitive credential path.' },
+  { pattern: /\b(?:sudo\s+)?rm\s+-(?=[^\s]*r)(?=[^\s]*f)[^\s]*\s+(?:--\s+)?["']?(?:\/\*|\/|~\/\*|~|\$HOME\/\*|\$HOME|\*|\.|\.\/|\.\/\*|\.\.\/\*)["']?(?:\s|$)/, reason: 'Destructive rm target is too broad.' },
+  { pattern: /\b(?:cat|grep|rg|sed|awk|head|tail|less|more|nl)\b[\s\S]*(?:^|[\s"'=<>])(?:[^\s"']*\/)?(?:\.env(?:$|[\w.-]*)|id_rsa\b|id_ed25519\b|[^"' ]+\.(?:pem|key)\b|\.aws\/credentials\b|\.ssh\/)/, reason: 'Reading sensitive files through shell commands is blocked.' },
   { pattern: /\b(?:mkfs|dd)\b.*\b(?:\/dev\/|of=\/dev\/)/, reason: 'Direct disk mutation is blocked.' },
   { pattern: /\bchmod\s+-R\s+777\s+(?:\/|~|\$HOME)/, reason: 'Unsafe recursive permissions change is blocked.' },
   { pattern: /\b(?:shutdown|halt|poweroff|reboot)\b/, reason: 'System shutdown is blocked.' },
@@ -29,21 +30,39 @@ const ASK_COMMANDS: Array<{ pattern: RegExp; reason: string }> = [
 ];
 
 const SENSITIVE_FILE_PATTERNS = [
-  /(^|\/)\.env(?:[.*]|$)/,
+  /(^|\/)\.env(?:$|[\w.-]*)/,
+  /(^|\/)\.npmrc$/,
+  /(^|\/)\.pypirc$/,
+  /(^|\/)\.netrc$/,
   /(^|\/)id_rsa$/,
+  /(^|\/)id_dsa$/,
+  /(^|\/)id_ecdsa$/,
   /(^|\/)id_ed25519$/,
+  /(^|\/)id_ed25519_sk$/,
   /\.pem$/,
   /\.key$/,
+  /\.p12$/,
+  /\.pfx$/,
+  /\.jks$/,
+  /\.keystore$/,
   /(^|\/)\.aws\/credentials$/,
+  /(^|\/)\.aws\/config$/,
   /(^|\/)\.ssh\//,
+  /(^|\/)\.kube(?:\/|$)/,
+  /(^|\/)\.docker\/config\.json$/,
+  /(^|\/)\.config\/gcloud\//,
+  /(^|\/)application_default_credentials\.json$/,
+  /(^|\/)\.azure(?:\/|$)/,
+  /(^|\/)\.gnupg(?:\/|$)/,
 ];
 
 export function evaluateCommandRisk(command: string): RiskResult {
+  const normalizedCommand = toPosixPath(command);
   for (const rule of DENY_COMMANDS) {
-    if (rule.pattern.test(command)) return { decision: 'deny', reason: rule.reason };
+    if (rule.pattern.test(normalizedCommand)) return { decision: 'deny', reason: rule.reason };
   }
   for (const rule of ASK_COMMANDS) {
-    if (rule.pattern.test(command)) return { decision: 'ask', reason: rule.reason };
+    if (rule.pattern.test(normalizedCommand)) return { decision: 'ask', reason: rule.reason };
   }
   return { decision: 'allow', reason: 'No HoldTheGoblin risk rule matched.' };
 }

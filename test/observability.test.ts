@@ -23,7 +23,7 @@ test('observability payloads summarize verification without command output', () 
     commandResults: [{
       id: 'test',
       label: 'Test',
-      command: 'npm test',
+      command: 'curl -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signaturevalue123" https://user:super-secret-value-12345@example.invalid', // holdthegoblin: allow-secret
       skipped: false,
       exitCode: 1,
       stdout: 'secret sk-1234567890abcdefghijklmnopqrstuvwxyz', // holdthegoblin: allow-secret
@@ -42,6 +42,10 @@ test('observability payloads summarize verification without command output', () 
   assert.match(agentops, /holdthegoblin.verify/);
   assert.doesNotMatch(langfuse, /abcdefghijklmnopqrstuvwxyz/);
   assert.doesNotMatch(agentops, /abcdefghijklmnopqrstuvwxyz/);
+  assert.doesNotMatch(langfuse, /super-secret-value/);
+  assert.doesNotMatch(agentops, /super-secret-value/);
+  assert.doesNotMatch(langfuse, /eyJhbGci/);
+  assert.doesNotMatch(agentops, /eyJhbGci/);
 });
 
 test('observability send handles success, server errors, missing env, and timeout', async () => {
@@ -90,6 +94,14 @@ test('observability send handles success, server errors, missing env, and timeou
     await errorServer.close();
     await slowServer.close();
   }
+});
+
+test('observability export rejects run paths outside the project root', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-observe-outside-'));
+  await assert.rejects(
+    exportObservability({ root, provider: 'all', run: '../outside.json' }),
+    /escapes project root/
+  );
 });
 
 function sampleVerifyResult(root: string): VerifyResult {

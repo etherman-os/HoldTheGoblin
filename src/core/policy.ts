@@ -104,11 +104,12 @@ export function evaluateResults(
   }
 
   for (const warning of warnings) {
+    const blocking = /output exceeded .*truncated/i.test(warning);
     checks.push({
       id: `warning:${warning}`,
-      label: 'Project detection',
-      status: config.mode === 'strict' ? 'fail' : 'warn',
-      severity: 'medium',
+      label: blocking ? 'Scanner evidence' : 'Project detection',
+      status: blocking || config.mode === 'strict' ? 'fail' : 'warn',
+      severity: blocking ? 'high' : 'medium',
       message: warning,
     });
   }

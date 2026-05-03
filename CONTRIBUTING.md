@@ -31,4 +31,5 @@ npm run release:check
 1. `npm run release:check`
 2. Confirm `README.md`, `CHANGELOG.md`, and examples match the shipped behavior.
 3. Confirm the package dry-run includes `dist/src`, `examples`, `README.md`, and `LICENSE`.
-4. Publish only from a clean working tree.
+4. Confirm `PRIVACY.md` and `docs/CONFIG.md` still match data egress and config behavior.
+5. Publish only from a clean working tree and a signed/tagged release. The GitHub publish workflow uses npm provenance when `NPM_TOKEN` is configured.

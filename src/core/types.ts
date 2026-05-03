@@ -58,6 +58,8 @@ export interface CommandResult {
   durationMs: number;
   timedOut: boolean;
   attempts: number;
+  stdoutTruncated?: boolean;
+  stderrTruncated?: boolean;
 }
 
 export type CheckStatus = 'pass' | 'fail' | 'warn' | 'skip';

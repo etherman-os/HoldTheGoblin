@@ -31,6 +31,14 @@ test('relative test generation output resolves under project root', async () => 
   }
 });
 
+test('test generation rejects output paths outside the project root', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-testgen-outside-'));
+  await assert.rejects(
+    generateTests({ root, output: '../outside.md' }),
+    /escapes project root/
+  );
+});
+
 test('ollama test generation handles success and fallback paths', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'htg-testgen-ollama-'));
   writeFileSync(path.join(root, 'api.ts'), 'export function loadUser(id) { return fetch(`/users/${id}`); }\n');

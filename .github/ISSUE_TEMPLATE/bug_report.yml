@@ -24,7 +24,23 @@ body:
     id: version
     attributes:
       label: HoldTheGoblin version
-      placeholder: "0.1.1"
+      placeholder: "0.1.2"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version, package manager, and agent host/version.
+      placeholder: "Ubuntu 24.04, Node 22.11, npm 10, Claude Code ..."
+    validations:
+      required: true
+  - type: input
+    id: scanners
+    attributes:
+      label: Scanner availability
+      description: Whether Semgrep and Trivy were installed or skipped.
+      placeholder: "Semgrep installed, Trivy skipped"
     validations:
       required: true
   - type: dropdown
@@ -45,5 +61,5 @@ body:
     id: logs
     attributes:
       label: Relevant output
-      description: Redact tokens, credentials, hostnames, and production identifiers.
+      description: Redact tokens, credentials, hostnames, production identifiers, and any guard-bypass details. For bypasses, use GitHub Security Advisories instead.
       render: shell

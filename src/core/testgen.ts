@@ -5,7 +5,7 @@ import { appendEvent } from './events.js';
 import { findEdgeCases } from './edgecases.js';
 import { getChangedFiles } from './git.js';
 import { generateText, type ModelProvider } from './llm.js';
-import { resolveProjectPath } from './paths.js';
+import { resolveInsideProject } from './paths.js';
 import { redactSensitiveText } from './redact.js';
 import type { EdgeCaseSuggestion } from './types.js';
 
@@ -33,7 +33,7 @@ export async function generateTests(options: {
   const changedFiles = await getChangedFiles(options.root);
   const suggestions = findEdgeCases(options.root, changedFiles);
   const outputPath = options.output
-    ? resolveProjectPath(options.root, options.output)
+    ? resolveInsideProject(options.root, options.output)
     : appPath(options.root, 'generated-tests.md');
   mkdirSync(path.dirname(outputPath), { recursive: true });
 

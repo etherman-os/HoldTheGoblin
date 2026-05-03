@@ -12,6 +12,7 @@ import { initProject } from './core/init.js';
 import { listModelProviders } from './core/llm.js';
 import { exportObservability, type ObservabilityProvider } from './core/observability.js';
 import { renderTextSummary } from './core/output.js';
+import { resolveInsideProject } from './core/paths.js';
 import { commandExists } from './core/runner.js';
 import { loadConfig } from './core/config.js';
 import { generateTests, type TestGenerationProvider } from './core/testgen.js';
@@ -33,6 +34,10 @@ async function main(): Promise<number> {
   const root = await findGitRoot(process.cwd());
 
   try {
+    if (args.flags.help || args.flags.h) {
+      printHelp();
+      return 0;
+    }
     switch (args.command) {
       case 'init':
         return cmdInit(args, root);
@@ -51,9 +56,9 @@ async function main(): Promise<number> {
       case 'events':
         return cmdEvents(args, root);
       case 'mcp':
-        return cmdMcp();
+        return cmdMcp(root);
       case 'mcp-http':
-        return cmdMcpHttp(args);
+        return cmdMcpHttp(args, root);
       case 'deploy':
         return cmdDeploy(args, root);
       case 'observability':
@@ -103,6 +108,7 @@ async function cmdWrap(args: ParsedArgs): Promise<number> {
 
 async function cmdVerify(args: ParsedArgs, root: string): Promise<number> {
   const format = stringFlag(args, 'format') ?? 'text';
+  if (!['text', 'json', 'markdown'].includes(format)) throw new Error('verify --format must be text, json, or markdown.');
   const result = await verify({ root });
   if (format === 'json') {
     console.log(JSON.stringify(result, null, 2));
@@ -142,7 +148,7 @@ async function cmdCheckpoint(args: ParsedArgs, root: string): Promise<number> {
     }
     case 'rollback': {
       const id = stringFlag(args, 'id') ?? args.rest[0] ?? 'latest';
-      const checkpoint = rollbackCheckpoint(root, id, Boolean(args.flags['delete-new']));
+      const checkpoint = rollbackCheckpoint(root, id, booleanFlag(args, 'delete-new'));
       console.log(`Rolled back tracked snapshot files to checkpoint ${checkpoint.id}.`);
       if (!args.flags['delete-new']) console.log('New files created after the checkpoint were not deleted. Pass --delete-new to remove them.');
       return 0;
@@ -157,7 +163,8 @@ async function cmdHandoff(args: ParsedArgs): Promise<number> {
   const schema = stringFlag(args, 'schema');
   const input = stringFlag(args, 'input');
   if (!schema || !input) throw new Error('handoff validate requires --schema and --input');
-  const result = validateHandoffFiles(schema, input);
+  const root = await findGitRoot(process.cwd());
+  const result = validateHandoffFiles(resolveInsideProject(root, schema), resolveInsideProject(root, input));
   if (result.ok) {
     console.log('Handoff payload is valid.');
     return 0;
@@ -207,6 +214,7 @@ async function cmdDoctor(root: string): Promise<number> {
 async function cmdEvents(args: ParsedArgs, root: string): Promise<number> {
   const limit = Number(stringFlag(args, 'limit') ?? '20');
   const format = stringFlag(args, 'format') ?? 'text';
+  if (!['text', 'json'].includes(format)) throw new Error('events --format must be text or json.');
   const events = readEvents(root, Number.isFinite(limit) ? limit : 20);
   if (format === 'json') {
     console.log(JSON.stringify(events, null, 2));
@@ -223,19 +231,20 @@ async function cmdEvents(args: ParsedArgs, root: string): Promise<number> {
   return 0;
 }
 
-async function cmdMcp(): Promise<number> {
+async function cmdMcp(root: string): Promise<number> {
   const { runMcpServer } = await import('./mcp.js');
-  await runMcpServer();
+  await runMcpServer({ root });
   return 0;
 }
 
-async function cmdMcpHttp(args: ParsedArgs): Promise<number> {
+async function cmdMcpHttp(args: ParsedArgs, root: string): Promise<number> {
   const { runMcpHttpServer } = await import('./mcp.js');
   await runMcpHttpServer({
     host: stringFlag(args, 'host') ?? '127.0.0.1',
     port: Number(stringFlag(args, 'port') ?? '3333'),
     allowedHosts: collectFlags(args, 'allowed-host'),
     authToken: stringFlag(args, 'auth-token') ?? process.env.HOLDTHEGOBLIN_MCP_HTTP_TOKEN,
+    root,
   });
   return 0;
 }
@@ -251,7 +260,7 @@ async function cmdDeploy(args: ParsedArgs, root: string): Promise<number> {
     case 'run': {
       const plan = stringFlag(args, 'plan') ?? args.rest[0];
       if (!plan) throw new Error('Usage: holdthegoblin deploy run --plan holdthegoblin.deploy.json');
-      const result = await runDeployPlan({ root, planPath: plan, dryRun: Boolean(args.flags['dry-run']) });
+      const result = await runDeployPlan({ root, planPath: plan, dryRun: booleanFlag(args, 'dry-run'), allowDangerous: booleanFlag(args, 'allow-dangerous') });
       if (stringFlag(args, 'format') === 'json') {
         console.log(JSON.stringify(result, null, 2));
       } else {
@@ -277,7 +286,7 @@ async function cmdObservability(args: ParsedArgs, root: string): Promise<number>
     root,
     provider,
     run: stringFlag(args, 'run'),
-    send: Boolean(args.flags.send),
+    send: booleanFlag(args, 'send'),
     sendTimeoutMs: numberFlag(args, 'timeout-ms'),
   });
   if (stringFlag(args, 'format') === 'json') {
@@ -383,7 +392,19 @@ function parseArgs(argv: string[]): ParsedArgs {
     const keyValue = item.slice(2);
     const eq = keyValue.indexOf('=');
     if (eq >= 0) {
-      flags[keyValue.slice(0, eq)] = keyValue.slice(eq + 1);
+      const key = keyValue.slice(0, eq);
+      const value = keyValue.slice(eq + 1);
+      flags[key] = BOOLEAN_FLAGS.has(key) ? parseBooleanValue(value, key) : value;
+      continue;
+    }
+    if (BOOLEAN_FLAGS.has(keyValue)) {
+      const next = rest[i + 1];
+      if (next === 'true' || next === 'false') {
+        flags[keyValue] = next === 'true';
+        i += 1;
+      } else {
+        flags[keyValue] = true;
+      }
       continue;
     }
     const next = rest[i + 1];
@@ -410,6 +431,10 @@ function numberFlag(args: ParsedArgs, key: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function booleanFlag(args: ParsedArgs, key: string): boolean {
+  return args.flags[key] === true;
+}
+
 function collectFlags(args: ParsedArgs, key: string): string[] {
   const values: string[] = [];
   for (let i = 0; i < process.argv.length; i += 1) {
@@ -421,6 +446,14 @@ function collectFlags(args: ParsedArgs, key: string): string[] {
 
 function commandAcceptsSubcommand(command: string | undefined): boolean {
   return new Set(['hook', 'checkpoint', 'handoff', 'deploy', 'observability', 'tests', 'models']).has(command ?? '');
+}
+
+const BOOLEAN_FLAGS = new Set(['delete-new', 'dry-run', 'send', 'help', 'h', 'allow-dangerous']);
+
+function parseBooleanValue(value: string, key: string): boolean {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new Error(`--${key} expects true or false.`);
 }
 
 function providerHelpList(): string {
@@ -443,7 +476,7 @@ Usage:
   holdthegoblin mcp
   holdthegoblin mcp-http [--host 127.0.0.1] [--port 3333] [--allowed-host localhost] [--auth-token token]
   holdthegoblin deploy init [--output holdthegoblin.deploy.json]
-  holdthegoblin deploy run --plan holdthegoblin.deploy.json [--dry-run] [--format json]
+  holdthegoblin deploy run --plan holdthegoblin.deploy.json [--dry-run] [--allow-dangerous] [--format json]
   holdthegoblin observability export --provider langfuse|agentops|all [--send] [--timeout-ms 15000]
   holdthegoblin tests generate [--provider ${providerHelpList()}] [--model model] [--base-url url] [--timeout-ms 60000]
   holdthegoblin models providers [--format json]
@@ -451,6 +484,11 @@ Usage:
 `);
 }
 
-main().then((code) => {
-  process.exitCode = code;
-});
+main()
+  .then((code) => {
+    process.exitCode = code;
+  })
+  .catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });

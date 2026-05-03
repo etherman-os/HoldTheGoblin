@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import path from 'node:path';
 import { appPath, ensureAppDirs, loadConfig } from './config.js';
 import { appendEvent } from './events.js';
-import { resolveProjectPath } from './paths.js';
-import { redactSensitiveText } from './redact.js';
+import { resolveInsideProject } from './paths.js';
+import { redactSensitiveData, redactSensitiveText } from './redact.js';
 import type { CheckResult, CommandResult, Finding, VerifyResult } from './types.js';
 
 export type ObservabilityProvider = 'langfuse' | 'agentops' | 'all';
@@ -56,7 +56,7 @@ export async function exportObservability(options: {
 }
 
 export function readVerifyRun(root: string, run?: string): VerifyResult {
-  const file = run ? resolveProjectPath(root, run) : latestRunJson(root);
+  const file = run ? resolveInsideProject(root, run) : latestRunJson(root);
   return JSON.parse(readFileSync(file, 'utf8')) as VerifyResult;
 }
 
@@ -127,7 +127,7 @@ async function exportProvider(
   ensureAppDirs(root);
   const dir = appPath(root, 'exports');
   mkdirSync(dir, { recursive: true });
-  const payload = provider === 'langfuse' ? buildLangfusePayload(result) : buildAgentOpsPayload(result);
+  const payload = redactSensitiveData(provider === 'langfuse' ? buildLangfusePayload(result) : buildAgentOpsPayload(result));
   const outputPath = path.join(dir, `${provider}-${result.runId}.json`);
   writeFileSync(outputPath, JSON.stringify(payload, null, 2) + '\n');
   if (!send) return { ok: true, provider, sent: false, outputPath };
@@ -249,7 +249,7 @@ function summarizeCommands(commands: CommandResult[]): unknown[] {
   return commands.map((command) => ({
     id: command.id,
     label: command.label,
-    command: command.command,
+    command: redactSensitiveText(command.command),
     skipped: command.skipped,
     skipReason: command.skipReason,
     exitCode: command.exitCode,
