@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "example-canary",
+  "verify": true,
+  "checkpoint": true,
+  "shadow": {
+    "command": "node -e \"console.log('shadow deploy ok')\""
+  },
+  "shadowHealth": {
+    "command": "node -e \"console.log('shadow health ok')\""
+  },
+  "canary": {
+    "command": "node -e \"console.log('canary deploy ok')\""
+  },
+  "canaryHealth": {
+    "command": "node -e \"console.log('canary health ok')\""
+  },
+  "promote": {
+    "command": "node -e \"console.log('promote ok')\""
+  },
+  "rollback": {
+    "command": "node -e \"console.log('rollback ok')\""
+  },
+  "rollbackCheckpoint": true
+}

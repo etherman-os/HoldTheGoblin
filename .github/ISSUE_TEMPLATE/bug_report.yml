@@ -1,0 +1,49 @@
+name: Bug report
+description: Report incorrect guard behavior or a product bug.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Use a disposable project. Do not include secrets.
+      placeholder: |
+        1. Run ...
+        2. Observe ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: HoldTheGoblin version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: integration
+    attributes:
+      label: Integration
+      options:
+        - CLI
+        - Claude Code hooks
+        - Cursor rules
+        - Codex rules/skills
+        - Warp rules/skills
+        - MCP
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Redact tokens, credentials, hostnames, and production identifiers.
+      render: shell

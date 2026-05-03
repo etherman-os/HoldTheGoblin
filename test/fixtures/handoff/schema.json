@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "required": ["agent", "result"],
+  "additionalProperties": false,
+  "properties": {
+    "agent": { "type": "string" },
+    "result": { "type": "string" }
+  }
+}

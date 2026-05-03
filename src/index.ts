@@ -1,0 +1,29 @@
+export { verify, type VerifyOptions } from './core/verify.js';
+export { createMcpServer, runMcpServer, runMcpHttpServer } from './mcp.js';
+export { detectProject } from './core/detect.js';
+export { findEdgeCases } from './core/edgecases.js';
+export { loadConfig, writeDefaultConfig } from './core/config.js';
+export { evaluateCommandRisk, evaluatePathReadRisk } from './core/risk.js';
+export { validateHandoff, validateHandoffFiles, type ValidationResult, type ValidationIssue } from './core/handoff.js';
+export { createCheckpoint, listCheckpoints, rollbackCheckpoint, type CheckpointMeta } from './core/checkpoint.js';
+export { runDeployPlan, readDeployPlan, writeExampleDeployPlan, type DeployPlan, type DeployRunResult } from './core/deploy.js';
+export { generateText, listModelProviders, type ModelProvider, type ModelProviderInfo, type GenerateTextOptions } from './core/llm.js';
+export { exportObservability, buildLangfusePayload, buildAgentOpsPayload, type ObservabilityExportResult, type ObservabilityProvider } from './core/observability.js';
+export { generateTests, renderDeterministicTestPlan, type TestGenerationProvider, type TestGenerationResult } from './core/testgen.js';
+export { appendEvent, readEvents, eventLogPath } from './core/events.js';
+export { createHoldTheGoblinLangGraphNode, createHoldTheGoblinLangGraphConditionalEdge } from './adapters/langgraph.js';
+export { createHoldTheGoblinCrewAIGuard } from './adapters/crewai.js';
+export type {
+  AgentKind,
+  CheckResult,
+  CommandResult,
+  Finding,
+  EdgeCaseSuggestion,
+  GuardEvent,
+  GuardMode,
+  HoldTheGoblinConfig,
+  PlannedCommand,
+  ProjectDetection,
+  ProjectKind,
+  VerifyResult,
+} from './core/types.js';

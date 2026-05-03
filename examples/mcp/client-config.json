@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "holdthegoblin": {
+      "command": "holdthegoblin",
+      "args": ["mcp"]
+    }
+  }
+}
