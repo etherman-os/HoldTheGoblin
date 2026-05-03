@@ -78,7 +78,7 @@ holdthegoblin handoff validate --schema schema.json --input payload.json
 holdthegoblin events [--limit 20] [--format text|json]
 holdthegoblin doctor
 holdthegoblin mcp
-holdthegoblin mcp-http [--host 127.0.0.1] [--port 3333] [--allowed-host localhost]
+holdthegoblin mcp-http [--host 127.0.0.1] [--port 3333] [--allowed-host localhost] [--auth-token token]
 holdthegoblin deploy init [--output holdthegoblin.deploy.json]
 holdthegoblin deploy run --plan holdthegoblin.deploy.json [--dry-run] [--format json]
 holdthegoblin observability export --provider langfuse|agentops|all [--send] [--timeout-ms 15000]
@@ -177,6 +177,8 @@ holdthegoblin deploy run --plan holdthegoblin.deploy.json
 ```
 
 A deploy plan can define `shadow`, `shadowHealth`, `canary`, `canaryHealth`, `promote`, and `rollback` commands. HoldTheGoblin runs verification first, creates a local checkpoint by default, and restores checkpoint-tracked files if a guarded deploy phase fails.
+
+Commands that match destructive or human-approval risk rules are blocked by default. Hard-deny rules cannot be bypassed by deploy-plan JSON. A deploy plan can set `allowDangerous: true` only for human-approval `ask` rules after separate review.
 
 ## Observability Export
 
@@ -294,7 +296,7 @@ Project docs:
 
 - Cursor rules are advisory; they cannot enforce a hard block by themselves.
 - Codex and Warp project rules are advisory; use CI or Claude Code hooks for hard enforcement.
-- `mcp-http` exposes Streamable HTTP on a host/port. It uses MCP SDK host validation; when binding beyond localhost, pass explicit `--allowed-host` values and put authentication, TLS, and network policy in front of it.
+- `mcp-http` exposes Streamable HTTP on a host/port. It uses MCP SDK host validation. When binding beyond localhost, `--auth-token` or `HOLDTHEGOBLIN_MCP_HTTP_TOKEN` is required; still put TLS and network policy in front of it.
 - Semgrep and Trivy are optional external CLIs. If missing, HoldTheGoblin reports them as skipped.
 - Deterministic test generation writes a test plan, not committed test files. External providers require the user to bring their own API key/subscription. HoldTheGoblin does not resell model access.
 - Langfuse direct send uses the legacy ingestion API shape; Langfuse recommends OpenTelemetry for new ingestion pipelines. AgentOps export is OTLP-style JSON intended for a relay or SDK bridge.

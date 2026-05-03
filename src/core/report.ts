@@ -3,6 +3,7 @@ import path from 'node:path';
 import { appPath, ensureAppDirs } from './config.js';
 import { appendEvent } from './events.js';
 import { renderMarkdownReport } from './output.js';
+import { redactSensitiveData } from './redact.js';
 import type { VerifyResult } from './types.js';
 
 export function writeReports(root: string, result: VerifyResult): VerifyResult {
@@ -12,7 +13,7 @@ export function writeReports(root: string, result: VerifyResult): VerifyResult {
   const markdownPath = path.join(runDir, `${result.runId}.md`);
   const latestPath = appPath(root, 'latest.md');
 
-  const withPath = { ...result, reportPath: latestPath };
+  const withPath = redactSensitiveData({ ...result, reportPath: latestPath });
   writeFileSync(jsonPath, JSON.stringify(withPath, null, 2) + '\n');
   writeFileSync(markdownPath, renderMarkdownReport(withPath));
   cpSync(markdownPath, latestPath);

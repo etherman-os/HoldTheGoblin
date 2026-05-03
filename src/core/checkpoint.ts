@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { appPath, ensureAppDirs } from './config.js';
+import { relativePosix, toPosixPath } from './paths.js';
+import { isSensitivePath } from './risk.js';
 import { runShell } from './runner.js';
 import type { PlannedCommand } from './types.js';
 
@@ -63,9 +65,10 @@ export function rollbackCheckpoint(root: string, id?: string, deleteNew = false)
   }
 
   if (deleteNew) {
+    const checkpointFiles = new Set(checkpoint.files.map((file) => toPosixPath(file)));
     for (const file of walkFiles(root)) {
-      const rel = path.relative(root, file);
-      if (!checkpoint.files.includes(rel)) rmSync(file, { force: true });
+      const rel = relativePosix(root, file);
+      if (!checkpointFiles.has(rel) && !isSensitivePath(rel)) rmSync(file, { force: true });
     }
   }
 
@@ -83,8 +86,10 @@ function resolveCheckpoint(root: string, id?: string): CheckpointMeta {
 
 async function listCandidateFiles(root: string): Promise<string[]> {
   const gitFiles = await listGitFiles(root);
-  if (gitFiles.length > 0) return gitFiles.filter((file) => canSnapshot(path.join(root, file)));
-  return [...walkFiles(root)].map((file) => path.relative(root, file)).filter((file) => canSnapshot(path.join(root, file)));
+  if (gitFiles.length > 0) return gitFiles.map(toPosixPath).filter((file) => canSnapshot(path.join(root, file), file));
+  return [...walkFiles(root)]
+    .map((file) => relativePosix(root, file))
+    .filter((file) => canSnapshot(path.join(root, file), file));
 }
 
 async function listGitFiles(root: string): Promise<string[]> {
@@ -98,7 +103,7 @@ async function listGitFiles(root: string): Promise<string[]> {
   };
   const result = await runShell(command, { cwd: root, timeoutMs: 10_000, retries: 0 });
   if (result.exitCode !== 0) return [];
-  return result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return result.stdout.split(/\r?\n/).map((line) => toPosixPath(line.trim())).filter(Boolean);
 }
 
 function* walkFiles(root: string): Generator<string> {
@@ -110,9 +115,10 @@ function* walkFiles(root: string): Generator<string> {
   }
 }
 
-function canSnapshot(file: string): boolean {
+function canSnapshot(file: string, relativeFile = toPosixPath(file)): boolean {
   if (!existsSync(file)) return false;
-  const parts = file.split(path.sep);
+  if (isSensitivePath(relativeFile)) return false;
+  const parts = toPosixPath(file).split('/');
   if (parts.some((part) => EXCLUDE.has(part))) return false;
   const stat = statSync(file);
   return stat.isFile() && stat.size <= MAX_FILE_SIZE;

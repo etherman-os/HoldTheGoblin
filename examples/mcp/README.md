@@ -7,6 +7,8 @@ holdthegoblin mcp
 holdthegoblin mcp-http --host 127.0.0.1 --port 3333
 ```
 
+When binding `mcp-http` outside loopback, set `--auth-token` or `HOLDTHEGOBLIN_MCP_HTTP_TOKEN`.
+
 Use this shape in MCP-capable clients:
 
 ```json

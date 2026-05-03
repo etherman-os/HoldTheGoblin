@@ -5,6 +5,8 @@ import { appendEvent } from './events.js';
 import { findEdgeCases } from './edgecases.js';
 import { getChangedFiles } from './git.js';
 import { generateText, type ModelProvider } from './llm.js';
+import { resolveProjectPath } from './paths.js';
+import { redactSensitiveText } from './redact.js';
 import type { EdgeCaseSuggestion } from './types.js';
 
 export type TestGenerationProvider = 'deterministic' | ModelProvider;
@@ -31,7 +33,7 @@ export async function generateTests(options: {
   const changedFiles = await getChangedFiles(options.root);
   const suggestions = findEdgeCases(options.root, changedFiles);
   const outputPath = options.output
-    ? path.resolve(options.output)
+    ? resolveProjectPath(options.root, options.output)
     : appPath(options.root, 'generated-tests.md');
   mkdirSync(path.dirname(outputPath), { recursive: true });
 
@@ -47,7 +49,7 @@ export async function generateTests(options: {
       timeoutMs: options.timeoutMs ?? readModelTimeoutMs(),
     });
     ok = generated.ok;
-    error = generated.error;
+    error = generated.error ? redactSensitiveText(generated.error) : undefined;
     if (generated.content) content = generated.content;
   }
 

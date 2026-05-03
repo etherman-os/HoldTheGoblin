@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import path from 'node:path';
 import { appPath, ensureAppDirs, loadConfig } from './config.js';
 import { appendEvent } from './events.js';
+import { resolveProjectPath } from './paths.js';
+import { redactSensitiveText } from './redact.js';
 import type { CheckResult, CommandResult, Finding, VerifyResult } from './types.js';
 
 export type ObservabilityProvider = 'langfuse' | 'agentops' | 'all';
@@ -54,7 +56,7 @@ export async function exportObservability(options: {
 }
 
 export function readVerifyRun(root: string, run?: string): VerifyResult {
-  const file = run ? path.resolve(run) : latestRunJson(root);
+  const file = run ? resolveProjectPath(root, run) : latestRunJson(root);
   return JSON.parse(readFileSync(file, 'utf8')) as VerifyResult;
 }
 
@@ -140,7 +142,7 @@ async function exportProvider(
       sent: true,
       outputPath,
       status: response.status,
-      error: response.status >= 200 && response.status < 300 ? undefined : response.text,
+      error: response.status >= 200 && response.status < 300 ? undefined : redactSensitiveText(response.text),
     };
   } catch (error) {
     return {
@@ -148,7 +150,7 @@ async function exportProvider(
       provider,
       sent: true,
       outputPath,
-      error: error instanceof Error ? error.message : String(error),
+      error: redactSensitiveText(error instanceof Error ? error.message : String(error)),
     };
   }
 }
@@ -239,7 +241,7 @@ function summarizeChecks(checks: CheckResult[]): Array<Record<string, unknown>> 
     label: check.label,
     status: check.status,
     severity: check.severity,
-    message: redact(check.message),
+    message: redactSensitiveText(check.message),
   }));
 }
 
@@ -261,16 +263,9 @@ function summarizeFindings(findings: Finding[]): unknown[] {
   return findings.map((finding) => ({
     scanner: finding.scanner,
     severity: finding.severity,
-    message: redact(finding.message),
+    message: redactSensitiveText(finding.message),
     file: finding.file,
     line: finding.line,
     ruleId: finding.ruleId,
   }));
-}
-
-function redact(value: string): string {
-  return value
-    .replace(/\bsk-[A-Za-z0-9_-]{16,}\b/g, 'sk-[redacted]')
-    .replace(/\bgh[pousr]_[A-Za-z0-9_]{16,}\b/g, 'gh_[redacted]')
-    .replace(/\bAKIA[0-9A-Z]{16}\b/g, 'AKIA[redacted]');
 }

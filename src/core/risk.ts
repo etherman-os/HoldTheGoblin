@@ -1,4 +1,4 @@
-import path from 'node:path';
+import { toPosixPath } from './paths.js';
 
 export type RiskDecision = 'allow' | 'ask' | 'deny';
 
@@ -8,8 +8,8 @@ export interface RiskResult {
 }
 
 const DENY_COMMANDS: Array<{ pattern: RegExp; reason: string }> = [
-  { pattern: /\brm\s+-rf\s+(?:\/|\*|~|\$HOME)(?:\s|$)/, reason: 'Destructive rm target is too broad.' },
-  { pattern: /\bsudo\s+rm\s+-rf\b/, reason: 'Privileged recursive deletion is blocked.' },
+  { pattern: /\b(?:sudo\s+)?rm\s+-(?=[^\s]*r)(?=[^\s]*f)[^\s]+\s+(?:--\s+)?["']?(?:\/\*|\/|~\/\*|~|\$HOME\/\*|\$HOME|\*)["']?(?:\s|$)/, reason: 'Destructive rm target is too broad.' },
+  { pattern: /\b(?:cat|grep|rg|sed|awk|head|tail|less|more|nl)\b[\s\S]*(?:^|[\s"'=])(?:[^\s"']*\/)?(?:\.env(?:\.|$)|id_rsa\b|id_ed25519\b|[^"' ]+\.(?:pem|key)\b|\.aws\/credentials\b|\.ssh\/)/, reason: 'Reading sensitive files through shell commands is blocked.' },
   { pattern: /\b(?:mkfs|dd)\b.*\b(?:\/dev\/|of=\/dev\/)/, reason: 'Direct disk mutation is blocked.' },
   { pattern: /\bchmod\s+-R\s+777\s+(?:\/|~|\$HOME)/, reason: 'Unsafe recursive permissions change is blocked.' },
   { pattern: /\b(?:shutdown|halt|poweroff|reboot)\b/, reason: 'System shutdown is blocked.' },
@@ -29,7 +29,7 @@ const ASK_COMMANDS: Array<{ pattern: RegExp; reason: string }> = [
 ];
 
 const SENSITIVE_FILE_PATTERNS = [
-  /(^|\/)\.env(?:\.|$)/,
+  /(^|\/)\.env(?:[.*]|$)/,
   /(^|\/)id_rsa$/,
   /(^|\/)id_ed25519$/,
   /\.pem$/,
@@ -49,7 +49,7 @@ export function evaluateCommandRisk(command: string): RiskResult {
 }
 
 export function evaluatePathReadRisk(filePath: string): RiskResult {
-  const normalized = filePath.split(path.sep).join('/');
+  const normalized = toPosixPath(filePath);
   for (const pattern of SENSITIVE_FILE_PATTERNS) {
     if (pattern.test(normalized)) {
       return {
@@ -59,6 +59,10 @@ export function evaluatePathReadRisk(filePath: string): RiskResult {
     }
   }
   return { decision: 'allow', reason: 'No sensitive path rule matched.' };
+}
+
+export function isSensitivePath(filePath: string): boolean {
+  return evaluatePathReadRisk(filePath).decision === 'deny';
 }
 
 export function hasMutationTool(toolName: string | undefined): boolean {

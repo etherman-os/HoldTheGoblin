@@ -80,7 +80,7 @@ function installClaudeHooks(root: string, executablePath: string, _mode: GuardMo
   const command = hookCommand(executablePath);
 
   addHook(settings, 'PreToolUse', {
-    matcher: 'Bash|Read',
+    matcher: 'Bash|Read|Grep|Glob|Edit|Write|MultiEdit|NotebookEdit',
     hooks: [{ type: 'command', command }],
   });
   addHook(settings, 'PostToolBatch', {

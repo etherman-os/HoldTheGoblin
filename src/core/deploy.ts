@@ -1,9 +1,10 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
 import { z } from 'zod';
 import { createCheckpoint, rollbackCheckpoint, type CheckpointMeta } from './checkpoint.js';
 import { appPath, ensureAppDirs, loadConfig } from './config.js';
 import { appendEvent } from './events.js';
+import { resolveProjectPath } from './paths.js';
+import { redactSensitiveData, redactSensitiveText } from './redact.js';
 import { evaluateCommandRisk } from './risk.js';
 import { runShell } from './runner.js';
 import { verify } from './verify.js';
@@ -84,7 +85,7 @@ export async function runDeployPlan(options: {
   dryRun?: boolean;
 }): Promise<DeployRunResult> {
   const root = options.root;
-  const planPath = path.resolve(options.planPath);
+  const planPath = resolveProjectPath(root, options.planPath);
   if (!existsSync(planPath)) throw new Error(`Deploy plan not found: ${planPath}`);
 
   const config = loadConfig(root);
@@ -169,15 +170,17 @@ async function runDeployCommand(
   defaultRetries: number
 ): Promise<CommandResult> {
   const risk = evaluateCommandRisk(spec.command);
-  if (risk.decision === 'deny' && !spec.allowDangerous) {
+  if (risk.decision === 'deny' || (risk.decision === 'ask' && !spec.allowDangerous)) {
     return {
       id: `deploy:${phase}`,
       label: `Deploy ${phase}`,
-      command: spec.command,
+      command: redactSensitiveText(spec.command),
       skipped: false,
       exitCode: 1,
       stdout: '',
-      stderr: `Blocked by HoldTheGoblin deploy guard: ${risk.reason}`,
+      stderr: risk.decision === 'deny'
+        ? `Blocked by HoldTheGoblin deploy guard: ${risk.reason}`
+        : `Blocked by HoldTheGoblin deploy guard: ${risk.reason} Set allowDangerous only after human review.`,
       durationMs: 0,
       timedOut: false,
       attempts: 0,
@@ -209,7 +212,7 @@ function finalizeDeployResult(input: {
 }): DeployRunResult {
   ensureAppDirs(input.root);
   const ok = input.phases.every((phase) => phase.ok);
-  const result: DeployRunResult = {
+  const result = redactSensitiveData<DeployRunResult>({
     ok,
     root: input.root,
     planPath: input.planPath,
@@ -219,7 +222,7 @@ function finalizeDeployResult(input: {
     checkpointId: input.checkpoint?.id,
     phases: input.phases,
     reportPath: appPath(input.root, 'deploy-latest.json'),
-  };
+  });
   writeFileSync(result.reportPath, JSON.stringify(result, null, 2) + '\n');
   return result;
 }

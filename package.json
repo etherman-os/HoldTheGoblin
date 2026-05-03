@@ -1,8 +1,16 @@
 {
   "name": "holdthegoblin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Evidence-gated verifier for AI coding agents.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/etherman-os/HoldTheGoblin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/etherman-os/HoldTheGoblin/issues"
+  },
+  "homepage": "https://github.com/etherman-os/HoldTheGoblin#readme",
   "engines": {
     "node": ">=20"
   },
@@ -39,6 +47,7 @@
     "verify:self": "npm run build && node dist/src/cli.js verify",
     "release:check": "npm run typecheck && npm test && npm run smoke && npm run demo:db-delete && npm run verify:self && npm pack --dry-run",
     "prepack": "npm run build",
+    "prepublishOnly": "npm run release:check",
     "dev": "npm run build && node dist/src/cli.js"
   },
   "keywords": [

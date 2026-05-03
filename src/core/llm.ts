@@ -1,3 +1,5 @@
+import { redactSensitiveText } from './redact.js';
+
 export type ModelProvider =
   | 'ollama'
   | 'ollama-cloud'
@@ -135,7 +137,7 @@ export async function generateText(options: GenerateTextOptions): Promise<{ ok: 
     if (options.provider === 'anthropic') return await generateAnthropic(options, timeoutMs);
     return await generateOpenAiCompatible(options, timeoutMs);
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    return { ok: false, error: redactSensitiveText(error instanceof Error ? error.message : String(error)) };
   }
 }
 
@@ -217,7 +219,7 @@ async function generateOpenAiCompatible(options: GenerateTextOptions, timeoutMs:
       temperature: 0.2,
     }),
   }, timeoutMs);
-  if (!response.ok) return { ok: false, error: `${options.provider} returned HTTP ${response.status}: ${await response.text()}` };
+  if (!response.ok) return { ok: false, error: redactSensitiveText(`${options.provider} returned HTTP ${response.status}: ${await response.text()}`) };
   const parsed = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
   return { ok: true, text: parsed.choices?.[0]?.message?.content?.trim() };
 }
@@ -240,7 +242,7 @@ async function generateAnthropic(options: GenerateTextOptions, timeoutMs: number
       messages: [{ role: 'user', content: options.prompt }],
     }),
   }, timeoutMs);
-  if (!response.ok) return { ok: false, error: `anthropic returned HTTP ${response.status}: ${await response.text()}` };
+  if (!response.ok) return { ok: false, error: redactSensitiveText(`anthropic returned HTTP ${response.status}: ${await response.text()}`) };
   const parsed = await response.json() as { content?: Array<{ type?: string; text?: string }> };
   return { ok: true, text: parsed.content?.filter((part) => part.type === 'text').map((part) => part.text ?? '').join('\n').trim() };
 }

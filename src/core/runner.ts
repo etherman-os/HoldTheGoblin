@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { redactSensitiveText } from './redact.js';
 import type { CommandResult, PlannedCommand } from './types.js';
 
 export interface RunOptions {
@@ -80,11 +81,11 @@ function runOnce(command: PlannedCommand, options: RunOptions, attempts: number)
       resolve({
         id: command.id,
         label: command.label,
-        command: command.command,
+        command: redactSensitiveText(command.command),
         skipped: false,
         exitCode: null,
-        stdout,
-        stderr: `${stderr}\n${error.message}`.trim(),
+        stdout: redactSensitiveText(stdout),
+        stderr: redactSensitiveText(`${stderr}\n${error.message}`.trim()),
         durationMs: Date.now() - started,
         timedOut,
         attempts,
@@ -98,11 +99,11 @@ function runOnce(command: PlannedCommand, options: RunOptions, attempts: number)
       resolve({
         id: command.id,
         label: command.label,
-        command: command.command,
+        command: redactSensitiveText(command.command),
         skipped: false,
         exitCode: code,
-        stdout,
-        stderr,
+        stdout: redactSensitiveText(stdout),
+        stderr: redactSensitiveText(stderr),
         durationMs: Date.now() - started,
         timedOut,
         attempts,

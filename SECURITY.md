@@ -6,7 +6,7 @@ Security fixes target the latest released version.
 
 ## Reporting A Vulnerability
 
-Please report vulnerabilities privately through GitHub Security Advisories when available. If advisories are not enabled, open a minimal issue that says a private report is needed without posting exploit details, secrets, or production identifiers.
+Please report vulnerabilities privately through GitHub Security Advisories. Do not open public issues containing exploit details, secrets, hostnames, production identifiers, or bypass techniques.
 
 Include:
 

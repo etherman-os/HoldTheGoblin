@@ -13,6 +13,7 @@ import { loadConfig } from './core/config.js';
 import { listModelProviders } from './core/llm.js';
 import { exportObservability } from './core/observability.js';
 import { renderMarkdownReport, renderTextSummary } from './core/output.js';
+import { resolveProjectPath } from './core/paths.js';
 import { generateTests } from './core/testgen.js';
 import { verify } from './core/verify.js';
 
@@ -26,10 +27,19 @@ export async function runMcpServer(): Promise<void> {
   await server.connect(transport);
 }
 
-export async function runMcpHttpServer(options: { host: string; port: number; allowedHosts?: string[] }): Promise<void> {
+export async function runMcpHttpServer(options: { host: string; port: number; allowedHosts?: string[]; authToken?: string }): Promise<void> {
+  if (!isLoopbackHost(options.host) && !options.authToken) {
+    throw new Error('mcp-http requires --auth-token or HOLDTHEGOBLIN_MCP_HTTP_TOKEN when binding outside loopback.');
+  }
   const app = createMcpExpressApp({
     host: options.host,
     allowedHosts: options.allowedHosts && options.allowedHosts.length > 0 ? options.allowedHosts : undefined,
+  });
+  app.use('/mcp', (req: any, res: any, next: any) => {
+    if (!options.authToken) return next();
+    const expected = `Bearer ${options.authToken}`;
+    if (req.headers.authorization === expected) return next();
+    return res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized.' }, id: null });
   });
   app.post('/mcp', async (req: any, res: any) => {
     const server = createMcpServer();
@@ -70,10 +80,14 @@ export async function runMcpHttpServer(options: { host: string; port: number; al
   });
 }
 
+function isLoopbackHost(host: string): boolean {
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+}
+
 export function createMcpServer(): McpServer {
   const server = new McpServer({
     name: 'holdthegoblin',
-    version: '0.1.0',
+    version: '0.1.1',
   });
 
   server.registerTool(
@@ -213,6 +227,7 @@ export function createMcpServer(): McpServer {
       title: 'Validate a multi-agent handoff payload',
       description: 'Validate a JSON payload against a JSON schema file.',
       inputSchema: {
+        ...rootSchema,
         schema: z.string().describe('Path to the JSON schema file.'),
         input: z.string().describe('Path to the JSON payload file.'),
       },
@@ -222,8 +237,9 @@ export function createMcpServer(): McpServer {
         idempotentHint: true,
       },
     },
-    async ({ schema, input }) => {
-      const result = validateHandoffFiles(schema, input);
+    async ({ root, schema, input }) => {
+      const projectRoot = await resolveRoot(root);
+      const result = validateHandoffFiles(resolveProjectPath(projectRoot, schema), resolveProjectPath(projectRoot, input));
       return {
         isError: !result.ok,
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -288,7 +304,9 @@ export function createMcpServer(): McpServer {
       inputSchema: {
         ...rootSchema,
         provider: z.enum(['langfuse', 'agentops', 'all']).optional().describe('Provider to export. Defaults to all.'),
+        run: z.string().optional().describe('Optional run JSON path, relative to root unless absolute.'),
         send: z.boolean().optional().describe('When true, send to configured provider endpoints. Defaults to false.'),
+        sendTimeoutMs: z.number().int().positive().optional().describe('Send timeout in milliseconds.'),
       },
       annotations: {
         readOnlyHint: false,
@@ -296,9 +314,9 @@ export function createMcpServer(): McpServer {
         idempotentHint: false,
       },
     },
-    async ({ root, provider, send }) => {
+    async ({ root, provider, run, send, sendTimeoutMs }) => {
       const projectRoot = await resolveRoot(root);
-      const result = await exportObservability({ root: projectRoot, provider: provider ?? 'all', send });
+      const result = await exportObservability({ root: projectRoot, provider: provider ?? 'all', run, send, sendTimeoutMs });
       return {
         isError: !result.every((item) => item.ok),
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -316,6 +334,7 @@ export function createMcpServer(): McpServer {
         provider: z.enum(['deterministic', 'ollama', 'ollama-cloud', 'openai-compatible', 'openai', 'groq', 'openrouter', 'anthropic', 'minimax', 'zai', 'kimi', 'deepseek']).optional().describe('Generation provider. Defaults to deterministic.'),
         model: z.string().optional().describe('Model id for LLM providers.'),
         baseUrl: z.string().optional().describe('Optional provider base URL override.'),
+        timeoutMs: z.number().int().positive().optional().describe('Provider timeout in milliseconds.'),
         output: z.string().optional().describe('Output markdown path.'),
       },
       annotations: {
@@ -324,9 +343,9 @@ export function createMcpServer(): McpServer {
         idempotentHint: false,
       },
     },
-    async ({ root, provider, model, baseUrl, output }) => {
+    async ({ root, provider, model, baseUrl, timeoutMs, output }) => {
       const projectRoot = await resolveRoot(root);
-      const result = await generateTests({ root: projectRoot, provider: provider ?? 'deterministic', model, baseUrl, output });
+      const result = await generateTests({ root: projectRoot, provider: provider ?? 'deterministic', model, baseUrl, timeoutMs, output });
       return {
         isError: !result.ok,
         content: [{ type: 'text', text: JSON.stringify({ ...result, content: undefined }, null, 2) }],

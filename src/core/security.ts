@@ -65,9 +65,19 @@ export async function runSecurityScans(root: string, config: HoldTheGoblinConfig
     }
 
     const result = await runShell(command, { cwd: root, timeoutMs: config.execution.timeoutMs, retries: 0 });
-    commandResults.push(result);
+    if (result.exitCode !== 0 || result.timedOut) {
+      skipped.push(`${command.label} failed with ${result.timedOut ? 'timeout' : `exit code ${result.exitCode}`}`);
+      commandResults.push(summarizeScannerResult(result));
+      continue;
+    }
+    if (result.stdout.trim() && !isJson(result.stdout)) {
+      skipped.push(`${command.label} produced invalid JSON output`);
+      commandResults.push(summarizeScannerResult(result));
+      continue;
+    }
     if (command.id === 'semgrep') findings.push(...parseSemgrep(result.stdout));
     if (command.id === 'trivy') findings.push(...parseTrivy(result.stdout));
+    commandResults.push(summarizeScannerResult(result));
   }
 
   return { commandResults, findings, skipped };
@@ -238,4 +248,21 @@ function dedupeFindings(findings: Finding[]): Finding[] {
 
 function isLockfile(file: string): boolean {
   return /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb|Cargo\.lock|poetry\.lock)$/.test(file);
+}
+
+function isJson(value: string): boolean {
+  try {
+    JSON.parse(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function summarizeScannerResult(result: CommandResult): CommandResult {
+  return {
+    ...result,
+    stdout: result.stdout ? '[scanner output omitted after parsing]' : '',
+    stderr: result.stderr ? '[scanner stderr omitted]' : '',
+  };
 }

@@ -55,7 +55,7 @@ test('observability send handles success, server errors, missing env, and timeou
     res.writeHead(200).end('ok');
   });
   const errorServer = await startServer((_req, res) => {
-    res.writeHead(500).end('bad');
+    res.writeHead(500).end('bad sk-1234567890abcdefghijklmnopqrstuvwxyzABCDE'); // holdthegoblin: allow-secret
   });
   const slowServer = await startServer(() => undefined);
 
@@ -72,6 +72,7 @@ test('observability send handles success, server errors, missing env, and timeou
     const failure = await exportObservability({ root, provider: 'langfuse', send: true, sendTimeoutMs: 500 });
     assert.equal(failure[0].ok, false);
     assert.equal(failure[0].status, 500);
+    assert.doesNotMatch(failure[0].error ?? '', /abcdefghijklmnopqrstuvwxyz/);
 
     delete process.env.LANGFUSE_PUBLIC_KEY;
     const missing = await exportObservability({ root, provider: 'langfuse', send: true, sendTimeoutMs: 500 });

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { findGitRoot } from './git.js';
 import { renderMarkdownReport } from './output.js';
-import { evaluateCommandRisk, evaluatePathReadRisk, hasMutationTool } from './risk.js';
+import { evaluateCommandRisk, evaluatePathReadRisk, hasMutationTool, isSensitivePath } from './risk.js';
 import type { HookInput } from './types.js';
 import { verify } from './verify.js';
 
@@ -35,24 +35,45 @@ function handlePreToolUse(input: HookInput): { stdout: string; exitCode: number 
     }
   }
 
-  if (input.tool_name === 'Read') {
-    const filePath = String(input.tool_input?.file_path ?? '');
-    const risk = evaluatePathReadRisk(filePath);
-    if (risk.decision === 'deny') {
-      return {
-        exitCode: 0,
-        stdout: JSON.stringify({
-          hookSpecificOutput: {
-            hookEventName: 'PreToolUse',
-            permissionDecision: 'deny',
-            permissionDecisionReason: `HoldTheGoblin: ${risk.reason}`,
-          },
-        }),
-      };
-    }
+  const sensitivePath = sensitiveToolPath(input.tool_input);
+  if (sensitivePath && shouldBlockSensitiveTool(input.tool_name)) {
+    const risk = evaluatePathReadRisk(sensitivePath);
+    return denyPreTool(`HoldTheGoblin: ${risk.reason}`);
   }
 
   return { stdout: '', exitCode: 0 };
+}
+
+function denyPreTool(reason: string): { stdout: string; exitCode: number } {
+  return {
+    exitCode: 0,
+    stdout: JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason: reason,
+      },
+    }),
+  };
+}
+
+function shouldBlockSensitiveTool(toolName: string | undefined): boolean {
+  return toolName === 'Read' || toolName === 'Grep' || toolName === 'Glob' || hasMutationTool(toolName);
+}
+
+function sensitiveToolPath(input: Record<string, unknown> | undefined): string | undefined {
+  if (!input) return undefined;
+  const values = [
+    input.file_path,
+    input.path,
+    input.notebook_path,
+    input.pattern,
+    ...Object.values(input).filter((value) => typeof value === 'string'),
+  ];
+  for (const value of values) {
+    if (typeof value === 'string' && isSensitivePath(value)) return value;
+  }
+  return undefined;
 }
 
 async function handlePostToolBatch(input: HookInput, root: string): Promise<{ stdout: string; exitCode: number }> {

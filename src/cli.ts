@@ -235,6 +235,7 @@ async function cmdMcpHttp(args: ParsedArgs): Promise<number> {
     host: stringFlag(args, 'host') ?? '127.0.0.1',
     port: Number(stringFlag(args, 'port') ?? '3333'),
     allowedHosts: collectFlags(args, 'allowed-host'),
+    authToken: stringFlag(args, 'auth-token') ?? process.env.HOLDTHEGOBLIN_MCP_HTTP_TOKEN,
   });
   return 0;
 }
@@ -368,7 +369,7 @@ function fileContains(file: string, needle: string): boolean {
 
 function parseArgs(argv: string[]): ParsedArgs {
   const [command, maybeSubcommand, ...tail] = argv;
-  const hasSubcommand = maybeSubcommand && !maybeSubcommand.startsWith('-');
+  const hasSubcommand = commandAcceptsSubcommand(command) && maybeSubcommand && !maybeSubcommand.startsWith('-');
   const rest = hasSubcommand ? tail : maybeSubcommand ? [maybeSubcommand, ...tail] : [];
   const flags: Record<string, string | boolean> = {};
   const positional: string[] = [];
@@ -418,6 +419,10 @@ function collectFlags(args: ParsedArgs, key: string): string[] {
   return values;
 }
 
+function commandAcceptsSubcommand(command: string | undefined): boolean {
+  return new Set(['hook', 'checkpoint', 'handoff', 'deploy', 'observability', 'tests', 'models']).has(command ?? '');
+}
+
 function providerHelpList(): string {
   return ['deterministic', ...listModelProviders().map((item) => item.id)].join('|');
 }
@@ -436,7 +441,7 @@ Usage:
   holdthegoblin doctor
   holdthegoblin events [--limit 20] [--format text|json]
   holdthegoblin mcp
-  holdthegoblin mcp-http [--host 127.0.0.1] [--port 3333] [--allowed-host localhost]
+  holdthegoblin mcp-http [--host 127.0.0.1] [--port 3333] [--allowed-host localhost] [--auth-token token]
   holdthegoblin deploy init [--output holdthegoblin.deploy.json]
   holdthegoblin deploy run --plan holdthegoblin.deploy.json [--dry-run] [--format json]
   holdthegoblin observability export --provider langfuse|agentops|all [--send] [--timeout-ms 15000]

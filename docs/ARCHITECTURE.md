@@ -6,7 +6,7 @@ HoldTheGoblin is a local-first verifier with three integration surfaces:
 - Agent project assets: Claude Code hooks, Cursor rules, Codex/Warp `AGENTS.md` rules, and agent skills.
 - SDK/MCP: exported TypeScript functions and a stdio MCP server for MCP-capable agents.
 - Framework adapters: dependency-light LangGraph and CrewAI helpers.
-- Model provider router: local Ollama, Ollama Cloud, OpenAI-compatible endpoints, OpenAI, Groq, OpenRouter, and Anthropic for optional test-plan generation.
+- Model provider router: local Ollama, Ollama Cloud, OpenAI-compatible endpoints, OpenAI, Groq, OpenRouter, Anthropic, MiniMax, z.ai/GLM, Kimi/Moonshot, and DeepSeek for optional test-plan generation.
 
 ## Verification Flow
 
@@ -24,6 +24,8 @@ HoldTheGoblin is a local-first verifier with three integration surfaces:
 `holdthegoblin deploy run --plan <file>` reads a versioned deploy plan, creates a checkpoint, runs verification, executes shadow/canary/promote commands, and runs rollback command plus checkpoint restore on failure.
 
 The deploy guard is command-runner based. It deliberately does not embed cloud-provider credentials or assume a specific platform.
+
+Deploy commands that match hard-deny risk rules are blocked even if a plan sets `allowDangerous`. Human-approval `ask` rules require `allowDangerous: true` in the reviewed plan.
 
 ## Observability Flow
 
