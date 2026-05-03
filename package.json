@@ -33,7 +33,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test \"dist/**/*.test.js\"",
+    "test": "npm run build && node --test dist/test/*.test.js",
     "smoke": "npm run build && node scripts/smoke.mjs",
     "demo:db-delete": "npm run build && node examples/db-delete-block/demo.mjs",
     "verify:self": "npm run build && node dist/src/cli.js verify",
