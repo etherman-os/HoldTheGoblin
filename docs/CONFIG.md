@@ -45,6 +45,10 @@ Default shape:
     "exportCommands": true,
     "exportFindings": true
   },
+  "githubActions": {
+    "requirePinnedActions": false,
+    "allowedUnpinnedActions": []
+  },
   "commands": {}
 }
 ```
@@ -103,6 +107,33 @@ To disable an external scanner for a repo that cannot run it:
 Use scanner disablement carefully. In strict release workflows, treat disabled secret or scanner policy as a review item.
 
 HoldTheGoblin surfaces policy downgrades explicitly. Disabling test-failure blocking, secret blocking, built-in secret scanning, Semgrep, Trivy, or default blocking severities creates a `Configuration policy floor` check. It is a warning in normal balanced verification and a failure in strict or release/deploy verification.
+
+## GitHub Actions Pinning
+
+HoldTheGoblin reports external workflow `uses:` refs that are not pinned to a full 40-character commit SHA. By default this is a warning only.
+
+To make unpinned external action refs block verification:
+
+```json
+{
+  "githubActions": {
+    "requirePinnedActions": true
+  }
+}
+```
+
+To allow a reviewed floating ref while keeping the rest blocking, add the exact `uses:` value:
+
+```json
+{
+  "githubActions": {
+    "requirePinnedActions": true,
+    "allowedUnpinnedActions": ["actions/checkout@v6"]
+  }
+}
+```
+
+Allowlisted refs are still surfaced as warnings so CI drift stays visible.
 
 ## Execution
 

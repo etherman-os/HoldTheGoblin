@@ -10,7 +10,7 @@
 - Added optional Semgrep and Trivy setup recipes with scanner skip semantics and Trivy supply-chain cautions.
 - Added local HTML evidence reports alongside Markdown and JSON verification reports.
 - Added GitHub Actions step summaries and escaped workflow annotations for concise CI evidence with artifact upload guidance.
-- Added report-only GitHub Actions ref pinning audit for mutable external workflow action refs.
+- Added GitHub Actions ref pinning audit with opt-in blocking policy and allowlists for mutable external workflow action refs.
 - Added installed-package smoke testing, package content allow/deny checks, sourcemap omission, MCP version derivation from package metadata, and fail-closed npm publish token handling.
 - Restricted observability exports to immutable `.holdthegoblin/runs` verification reports and added immutable report paths to verification evidence.
 

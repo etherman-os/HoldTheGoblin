@@ -26,11 +26,13 @@ HoldTheGoblin is a safety tool, so roadmap items need measurable enforcement or 
   Acceptance: docs and the downstream workflow show optional Semgrep/Trivy setup paths while keeping missing scanners reported as skipped, not passed.
 - Workflow action pinning audit.
   Acceptance: verification reports external GitHub Actions refs that are not pinned to full commit SHAs without changing verification exit semantics.
+- Workflow action pinning policy controls.
+  Acceptance: repos can opt into blocking unpinned external action refs in strict/release workflows with documented allowlists.
 
 ## Next
 
-- Workflow action pinning policy controls.
-  Acceptance: repos can opt into blocking unpinned external action refs in strict/release workflows with documented allowlists.
+- Workflow action pinning autofix guidance.
+  Acceptance: evidence reports include actionable guidance for replacing mutable GitHub Action refs with reviewed commit SHAs.
 
 ## Later
 

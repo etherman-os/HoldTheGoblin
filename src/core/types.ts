@@ -24,6 +24,10 @@ export interface HoldTheGoblinConfig {
     exportCommands: boolean;
     exportFindings: boolean;
   };
+  githubActions: {
+    requirePinnedActions: boolean;
+    allowedUnpinnedActions: string[];
+  };
   commands: Partial<Record<ProjectKind, string[]>>;
 }
 

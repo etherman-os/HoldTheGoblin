@@ -30,6 +30,53 @@ jobs:
   assert.match(check.message, /not pinned/);
 });
 
+test('can fail unpinned GitHub Actions refs when policy is required', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-actions-required-'));
+  const workflowDir = path.join(root, '.github', 'workflows');
+  mkdirSync(workflowDir, { recursive: true });
+  writeFileSync(path.join(workflowDir, 'ci.yml'), `
+jobs:
+  test:
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+`);
+
+  const [blocked] = auditWorkflowActionRefs(root, { requirePinnedActions: true });
+  assert.equal(blocked.status, 'fail');
+  assert.match(blocked.message, /not allowlisted/);
+
+  const [allowed] = auditWorkflowActionRefs(root, {
+    requirePinnedActions: true,
+    allowedUnpinnedActions: ['actions/checkout@v6', 'actions/setup-node@v6'],
+  });
+  assert.equal(allowed.status, 'warn');
+  assert.match(allowed.message, /2 allowlisted/);
+});
+
+test('can fail verification when unpinned GitHub Actions refs are required to be pinned', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-actions-verify-'));
+  const workflowDir = path.join(root, '.github', 'workflows');
+  mkdirSync(path.join(root, '.holdthegoblin'), { recursive: true });
+  mkdirSync(workflowDir, { recursive: true });
+  writeFileSync(path.join(root, '.holdthegoblin', 'config.json'), JSON.stringify({
+    githubActions: {
+      requirePinnedActions: true,
+    },
+  }));
+  writeFileSync(path.join(workflowDir, 'ci.yml'), `
+jobs:
+  test:
+    steps:
+      - uses: actions/checkout@v6
+`);
+
+  const { verify } = await import('../src/core/verify.js');
+  const result = await verify({ root, writeReport: false, includeSecurity: false });
+  assert.equal(result.ok, false);
+  assert.ok(result.checks.some((check) => check.id === 'github-actions:pinning' && check.status === 'fail'));
+});
+
 test('passes when external GitHub Actions refs are pinned to full SHAs', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'htg-actions-pinned-'));
   const workflowDir = path.join(root, '.github', 'workflows');

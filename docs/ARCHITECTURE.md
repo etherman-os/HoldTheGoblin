@@ -46,7 +46,7 @@ CI or another external gate should run `holdthegoblin verify` when a hard merge/
 
 GitHub Actions summaries and annotations are report-only. They do not alter policy evaluation, hook decisions, or process exit codes.
 
-The GitHub Actions ref pinning audit is also report-only. It surfaces mutable `uses:` refs so maintainers can decide which workflow actions should be commit-pinned.
+The GitHub Actions ref pinning audit is report-only by default. Repositories can set `githubActions.requirePinnedActions` to make non-allowlisted mutable `uses:` refs fail verification.
 
 ## Local State
 

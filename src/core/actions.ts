@@ -10,10 +10,15 @@ export interface WorkflowActionRefFinding {
   message: string;
 }
 
+export interface WorkflowActionAuditOptions {
+  requirePinnedActions?: boolean;
+  allowedUnpinnedActions?: string[];
+}
+
 const WORKFLOW_EXTENSIONS = new Set(['.yml', '.yaml']);
 const MAX_WORKFLOW_BYTES = 512 * 1024;
 
-export function auditWorkflowActionRefs(root: string): CheckResult[] {
+export function auditWorkflowActionRefs(root: string, options: WorkflowActionAuditOptions = {}): CheckResult[] {
   const workflowFiles = listWorkflowFiles(root);
   if (workflowFiles.length === 0) return [];
   const findings = workflowFiles.flatMap((file) => findUnpinnedWorkflowActionRefs(root, file));
@@ -26,13 +31,19 @@ export function auditWorkflowActionRefs(root: string): CheckResult[] {
       message: 'External GitHub Actions refs are pinned to full commit SHAs.',
     }];
   }
+  const allowed = new Set(options.allowedUnpinnedActions ?? []);
+  const blockingFindings = findings.filter((finding) => !allowed.has(finding.uses));
+  const blocking = options.requirePinnedActions === true && blockingFindings.length > 0;
+  const allowedCount = findings.length - blockingFindings.length;
   return [{
     id: 'github-actions:pinning',
     label: 'GitHub Actions pinning audit',
-    status: 'warn',
-    severity: 'medium',
-    message: `${findings.length} external GitHub Actions ref(s) are not pinned to a full commit SHA. This is report-only; pin security-sensitive workflow refs downstream.`,
-    evidence: findings.slice(0, 20),
+    status: blocking ? 'fail' : 'warn',
+    severity: blocking ? 'high' : 'medium',
+    message: blocking
+      ? `${blockingFindings.length} external GitHub Actions ref(s) are not pinned to a full commit SHA and are not allowlisted.`
+      : `${findings.length} external GitHub Actions ref(s) are not pinned to a full commit SHA.${allowedCount > 0 ? ` ${allowedCount} allowlisted.` : ''} This is report-only; pin security-sensitive workflow refs downstream.`,
+    evidence: findings.slice(0, 20).map((finding) => ({ ...finding, allowlisted: allowed.has(finding.uses) })),
   }];
 }
 

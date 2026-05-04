@@ -31,6 +31,10 @@ export const DEFAULT_CONFIG: HoldTheGoblinConfig = {
     exportCommands: true,
     exportFindings: true,
   },
+  githubActions: {
+    requirePinnedActions: false,
+    allowedUnpinnedActions: [],
+  },
   commands: {},
 };
 
@@ -38,6 +42,7 @@ const guardModeSchema = z.enum(['relaxed', 'balanced', 'strict']);
 const PROJECT_KINDS = ['javascript', 'python', 'go', 'rust', 'java', 'unknown'] as const;
 const severitySchema = z.string().trim().min(1).regex(/^[A-Z]+$/i).transform((value) => value.toUpperCase());
 const commandStringSchema = z.string().trim().min(1);
+const actionUsesSchema = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_./-]+)?@[A-Za-z0-9_./-]+$/);
 const commandsSchema = z.record(z.string(), z.array(commandStringSchema).max(50)).superRefine((value, ctx) => {
   for (const key of Object.keys(value)) {
     if (!(PROJECT_KINDS as readonly string[]).includes(key)) {
@@ -72,6 +77,10 @@ const partialConfigSchema = z.object({
   observability: z.object({
     exportCommands: z.boolean().optional(),
     exportFindings: z.boolean().optional(),
+  }).strict().optional(),
+  githubActions: z.object({
+    requirePinnedActions: z.boolean().optional(),
+    allowedUnpinnedActions: z.array(actionUsesSchema).max(100).optional(),
   }).strict().optional(),
   commands: commandsSchema.optional(),
 }).strict();
@@ -133,6 +142,24 @@ export const CONFIG_JSON_SCHEMA = {
         exportFindings: { type: 'boolean' },
       },
     },
+    githubActions: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        requirePinnedActions: { type: 'boolean', description: 'When true, unpinned external GitHub Actions refs fail verification unless allowlisted.' },
+        allowedUnpinnedActions: {
+          type: 'array',
+          maxItems: 100,
+          items: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 200,
+            pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(/[A-Za-z0-9_./-]+)?@[A-Za-z0-9_./-]+$',
+            description: 'Exact external uses: value that may remain unpinned, for example actions/checkout@v6.',
+          },
+        },
+      },
+    },
     commands: {
       type: 'object',
       additionalProperties: false,
@@ -173,6 +200,7 @@ export function loadConfig(root: string): HoldTheGoblinConfig {
     execution: { ...DEFAULT_CONFIG.execution, ...parsed.execution },
     security: { ...DEFAULT_CONFIG.security, ...parsed.security },
     observability: { ...DEFAULT_CONFIG.observability, ...parsed.observability },
+    githubActions: { ...DEFAULT_CONFIG.githubActions, ...parsed.githubActions },
     commands: { ...DEFAULT_CONFIG.commands, ...parsed.commands },
   };
 }
@@ -290,6 +318,9 @@ const KNOWN_CONFIG_PATH_SEGMENTS = new Set([
   'observability',
   'exportCommands',
   'exportFindings',
+  'githubActions',
+  'requirePinnedActions',
+  'allowedUnpinnedActions',
   'commands',
   ...PROJECT_KINDS,
 ]);

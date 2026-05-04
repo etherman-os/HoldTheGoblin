@@ -51,7 +51,7 @@ export async function verify(options: VerifyOptions): Promise<VerifyResult> {
     edgeCases,
     { enforcePolicyFloor: options.enforcePolicyFloor === true }
   );
-  checks.push(...auditWorkflowActionRefs(options.root));
+  checks.push(...auditWorkflowActionRefs(options.root, config.githubActions));
   const finishedAt = new Date().toISOString();
   const result: VerifyResult = {
     ok: isOk(checks),

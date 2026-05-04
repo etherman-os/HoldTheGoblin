@@ -16,19 +16,27 @@ test('config validation accepts partial documented config', () => {
       failOnMissingTests: true,
       semgrepSeverities: ['WARNING', 'ERROR'],
     },
+    githubActions: {
+      requirePinnedActions: true,
+      allowedUnpinnedActions: ['actions/checkout@v6'],
+    },
     commands: {
       javascript: ['npm run test:unit'],
     },
   });
 
   assert.equal(parsed.mode, 'strict');
+  assert.equal(parsed.githubActions?.requirePinnedActions, true);
 });
 
-test('config validation normalizes severities and trims commands', () => {
+test('config validation normalizes severities and trims command/action lists', () => {
   const parsed = validateConfigObject({
     failPolicy: {
       semgrepSeverities: ['error'],
       trivySeverities: ['high', 'critical'],
+    },
+    githubActions: {
+      allowedUnpinnedActions: [' actions/checkout@v6 '],
     },
     commands: {
       javascript: [' npm run test:unit '],
@@ -37,6 +45,7 @@ test('config validation normalizes severities and trims commands', () => {
 
   assert.deepEqual(parsed.failPolicy?.semgrepSeverities, ['ERROR']);
   assert.deepEqual(parsed.failPolicy?.trivySeverities, ['HIGH', 'CRITICAL']);
+  assert.deepEqual(parsed.githubActions?.allowedUnpinnedActions, ['actions/checkout@v6']);
   assert.deepEqual(parsed.commands?.javascript, ['npm run test:unit']);
 });
 
