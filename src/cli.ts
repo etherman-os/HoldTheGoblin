@@ -11,7 +11,7 @@ import { handleClaudeHook } from './core/hooks.js';
 import { initProject } from './core/init.js';
 import { listModelProviders } from './core/llm.js';
 import { exportObservability, type ObservabilityProvider } from './core/observability.js';
-import { writeGithubStepSummary } from './core/github.js';
+import { writeGithubAnnotations, writeGithubStepSummary } from './core/github.js';
 import { renderTextSummary } from './core/output.js';
 import { readPackageVersion } from './core/package.js';
 import { resolveInsideProject } from './core/paths.js';
@@ -113,8 +113,12 @@ async function cmdWrap(args: ParsedArgs): Promise<number> {
 async function cmdVerify(args: ParsedArgs, root: string): Promise<number> {
   const format = stringFlag(args, 'format') ?? 'text';
   if (!['text', 'json', 'markdown', 'html'].includes(format)) throw new Error('verify --format must be text, json, markdown, or html.');
+  if (booleanFlag(args, 'github-annotations') && (format === 'json' || format === 'html')) {
+    throw new Error('--github-annotations writes workflow commands to stdout and cannot be combined with json or html format.');
+  }
   const result = await verify({ root });
   if (booleanFlag(args, 'github-step-summary')) writeGithubStepSummary(result);
+  if (booleanFlag(args, 'github-annotations')) writeGithubAnnotations(result);
   if (format === 'json') {
     console.log(JSON.stringify(result, null, 2));
   } else if (format === 'markdown') {
@@ -472,7 +476,7 @@ function commandAcceptsSubcommand(command: string | undefined): boolean {
   return new Set(['hook', 'checkpoint', 'handoff', 'config', 'deploy', 'observability', 'tests', 'models']).has(command ?? '');
 }
 
-const BOOLEAN_FLAGS = new Set(['delete-new', 'dry-run', 'send', 'help', 'h', 'allow-dangerous', 'github-step-summary']);
+const BOOLEAN_FLAGS = new Set(['delete-new', 'dry-run', 'send', 'help', 'h', 'allow-dangerous', 'github-step-summary', 'github-annotations']);
 
 function parseBooleanValue(value: string, key: string): boolean {
   if (value === 'true') return true;
@@ -491,7 +495,7 @@ Usage:
   holdthegoblin --version
   holdthegoblin init --agent claude-code|cursor|codex|warp|all [--mode relaxed|balanced|strict]
   holdthegoblin wrap --agent claude-code|cursor|codex|warp|all [path]
-  holdthegoblin verify [--format text|json|markdown|html] [--github-step-summary]
+  holdthegoblin verify [--format text|json|markdown|html] [--github-step-summary] [--github-annotations]
   holdthegoblin hook claude
   holdthegoblin checkpoint create|list|rollback [--id latest] [--delete-new]
   holdthegoblin handoff validate --schema schema.json --input payload.json
@@ -512,6 +516,7 @@ Notes:
   verify writes .holdthegoblin/latest.md, .holdthegoblin/latest.html, and immutable .holdthegoblin/runs/<run-id> reports.
   verify --format selects stdout format only.
   verify --github-step-summary appends a concise Markdown summary to GitHub Actions GITHUB_STEP_SUMMARY.
+  verify --github-annotations emits redacted GitHub Actions workflow command annotations for failed checks, failed commands, warnings/skips, and findings.
 `);
 }
 

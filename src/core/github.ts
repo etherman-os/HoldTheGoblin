@@ -1,18 +1,29 @@
 import { appendFileSync, existsSync, lstatSync } from 'node:fs';
 import path from 'node:path';
 import { formatDuration, summarizeFinding, statusIcon } from './output.js';
-import { isInsidePath, relativePosix } from './paths.js';
+import { assertSafeRelativePath, isInsidePath, relativePosix } from './paths.js';
 import { redactSensitiveData } from './redact.js';
-import type { CheckResult, CommandResult, VerifyResult } from './types.js';
+import type { CheckResult, CommandResult, Finding, VerifyResult } from './types.js';
 
 export interface GithubStepSummaryOptions {
   env?: NodeJS.ProcessEnv;
+}
+
+export interface GithubAnnotationOptions {
+  env?: NodeJS.ProcessEnv;
+  write?: (content: string) => void;
 }
 
 export function writeGithubStepSummary(result: VerifyResult, options: GithubStepSummaryOptions = {}): string {
   const summaryPath = resolveGithubStepSummaryPath(options.env ?? process.env);
   appendFileSync(summaryPath, renderGithubStepSummary(result));
   return summaryPath;
+}
+
+export function writeGithubAnnotations(result: VerifyResult, options: GithubAnnotationOptions = {}): void {
+  assertGithubActionsEnv(options.env ?? process.env, '--github-annotations');
+  const output = renderGithubAnnotations(result);
+  if (output) (options.write ?? ((content) => process.stdout.write(content)))(output);
 }
 
 export function renderGithubStepSummary(input: VerifyResult): string {
@@ -98,8 +109,57 @@ export function renderGithubStepSummary(input: VerifyResult): string {
   return `${lines.join('\n')}\n`;
 }
 
+export function renderGithubAnnotations(input: VerifyResult): string {
+  const result = redactSensitiveData(input);
+  const annotations: GithubAnnotation[] = [];
+
+  for (const check of result.checks) {
+    if (check.status === 'fail') {
+      annotations.push({
+        level: 'error',
+        title: `HoldTheGoblin check failed: ${check.label}`,
+        message: check.message,
+      });
+    } else if (check.status === 'warn' || check.status === 'skip') {
+      annotations.push({
+        level: 'warning',
+        title: `HoldTheGoblin ${statusIcon(check.status)}: ${check.label}`,
+        message: check.message,
+      });
+    }
+  }
+
+  for (const command of result.commandResults) {
+    if (command.skipped || (command.exitCode === 0 && !command.timedOut)) continue;
+    annotations.push({
+      level: 'error',
+      title: `HoldTheGoblin command failed: ${command.label}`,
+      message: `${command.timedOut ? 'Command timed out' : `Command exited with ${command.exitCode ?? 'unknown'}`}. See the HoldTheGoblin evidence report for command details.`,
+    });
+  }
+
+  for (const finding of result.findings) {
+    annotations.push({
+      level: findingAnnotationLevel(finding),
+      title: `HoldTheGoblin ${finding.scanner} ${finding.severity}`,
+      message: findingMessage(finding),
+      ...findingLocation(finding),
+    });
+  }
+
+  const limited = annotations.slice(0, 20);
+  if (annotations.length > limited.length) {
+    limited.push({
+      level: 'notice',
+      title: 'HoldTheGoblin annotations truncated',
+      message: `${annotations.length - limited.length} additional diagnostics are available in the evidence report.`,
+    });
+  }
+  return limited.map(renderWorkflowCommand).join('');
+}
+
 function resolveGithubStepSummaryPath(env: NodeJS.ProcessEnv): string {
-  if (env.GITHUB_ACTIONS !== 'true') throw new Error('--github-step-summary can only write inside GitHub Actions.');
+  assertGithubActionsEnv(env, '--github-step-summary');
   const summaryPath = env.GITHUB_STEP_SUMMARY;
   if (!summaryPath) throw new Error('GITHUB_STEP_SUMMARY is not set.');
   if (!path.isAbsolute(summaryPath)) throw new Error('GITHUB_STEP_SUMMARY must be an absolute path.');
@@ -109,6 +169,10 @@ function resolveGithubStepSummaryPath(env: NodeJS.ProcessEnv): string {
     if (stat.isDirectory()) throw new Error('GITHUB_STEP_SUMMARY must be a file path.');
   }
   return summaryPath;
+}
+
+function assertGithubActionsEnv(env: NodeJS.ProcessEnv, flag: string): void {
+  if (env.GITHUB_ACTIONS !== 'true') throw new Error(`${flag} can only write inside GitHub Actions.`);
 }
 
 function evidencePaths(result: VerifyResult): string[] {
@@ -134,6 +198,58 @@ function countPassedCommands(commands: CommandResult[]): number {
 
 function limitRows<T>(rows: T[]): T[] {
   return rows.slice(0, 10);
+}
+
+interface GithubAnnotation {
+  level: 'error' | 'warning' | 'notice';
+  title: string;
+  message: string;
+  file?: string;
+  line?: number;
+}
+
+function findingAnnotationLevel(finding: Finding): GithubAnnotation['level'] {
+  return /^(CRITICAL|HIGH|ERROR)$/i.test(finding.severity) ? 'error' : 'warning';
+}
+
+function findingLocation(finding: Finding): Pick<GithubAnnotation, 'file' | 'line'> {
+  if (!finding.file) return {};
+  let file: string;
+  try {
+    file = assertSafeRelativePath(finding.file);
+  } catch {
+    return {};
+  }
+  const line = Number.isInteger(finding.line) && finding.line !== undefined && finding.line > 0 ? finding.line : undefined;
+  return { file, ...(line ? { line } : {}) };
+}
+
+function findingMessage(finding: Finding): string {
+  const rule = finding.ruleId ? ` [${finding.ruleId}]` : '';
+  return `${finding.scanner.toUpperCase()} ${finding.severity}${rule}: ${finding.message}`;
+}
+
+function renderWorkflowCommand(annotation: GithubAnnotation): string {
+  const properties: Record<string, string | number> = { title: annotation.title };
+  if (annotation.file) properties.file = annotation.file;
+  if (annotation.line) properties.line = annotation.line;
+  const propertyText = Object.entries(properties)
+    .map(([key, value]) => `${key}=${escapeWorkflowProperty(value)}`)
+    .join(',');
+  return `::${annotation.level} ${propertyText}::${escapeWorkflowData(annotation.message)}\n`;
+}
+
+function escapeWorkflowData(value: unknown): string {
+  return String(value)
+    .replace(/%/g, '%25')
+    .replace(/\r/g, '%0D')
+    .replace(/\n/g, '%0A');
+}
+
+function escapeWorkflowProperty(value: unknown): string {
+  return escapeWorkflowData(value)
+    .replace(/:/g, '%3A')
+    .replace(/,/g, '%2C');
 }
 
 function inlineCode(value: string): string {

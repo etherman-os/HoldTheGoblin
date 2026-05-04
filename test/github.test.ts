@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } fro
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { renderGithubStepSummary, writeGithubStepSummary } from '../src/core/github.js';
+import { renderGithubAnnotations, renderGithubStepSummary, writeGithubAnnotations, writeGithubStepSummary } from '../src/core/github.js';
 import type { VerifyResult } from '../src/core/types.js';
 
 test('GitHub step summary is redacted, escaped, and concise', () => {
@@ -81,6 +81,69 @@ test('GitHub step summary rejects symlink target paths', (t) => {
     () => writeGithubStepSummary(sampleResult(root), { env: { GITHUB_ACTIONS: 'true', GITHUB_STEP_SUMMARY: summaryPath } }),
     /must not be a symlink/
   );
+});
+
+test('GitHub annotations are escaped, redacted, and omit raw command output', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-gh-annotations-'));
+  const token = 'sk-' + '1234567890abcdefghijklmnopqrstuvwxyzABCDE'; // holdthegoblin: allow-secret
+  const encryptedKey = [
+    '-----BEGIN ENCRYPTED PRIVATE KEY-----',
+    'MIIEvQIBADANBgkqhkiG9w0BAQEFAASC',
+    '-----END ENCRYPTED PRIVATE KEY-----',
+  ].join('\n'); // holdthegoblin: allow-secret
+  const result = sampleResult(root, {
+    ok: false,
+    checks: [
+      { id: 'x', label: 'Policy: bad, 100%\nnext', status: 'fail', severity: 'high', message: `failed ${token}\n${encryptedKey}` },
+      { id: 'warn', label: 'Semgrep SAST', status: 'warn', severity: 'info', message: 'semgrep not installed; scanner skipped.' },
+    ],
+    commandResults: [{
+      id: 'test',
+      label: 'Unit tests',
+      command: `echo ${token}`,
+      skipped: false,
+      exitCode: 1,
+      stdout: `raw stdout ${token}`,
+      stderr: encryptedKey,
+      durationMs: 1234,
+      timedOut: false,
+      attempts: 1,
+    }],
+    findings: [{ scanner: 'secret', severity: 'CRITICAL', message: `secret ${token}`, file: 'src/ann:file,%.ts', line: 7, ruleId: 'secret:test' }],
+  });
+
+  const annotations = renderGithubAnnotations(result);
+  assert.match(annotations, /^::error /m);
+  assert.match(annotations, /^::warning /m);
+  assert.match(annotations, /title=HoldTheGoblin check failed%3A Policy%3A bad%2C 100%25%0Anext/);
+  assert.match(annotations, /file=src\/ann%3Afile%2C%25\.ts,line=7/);
+  assert.match(annotations, /%0A/);
+  assert.doesNotMatch(annotations, /abcdefghijklmnopqrstuvwxyz/);
+  assert.doesNotMatch(annotations, /ENCRYPTED PRIVATE KEY/);
+  assert.doesNotMatch(annotations, /raw stdout/);
+});
+
+test('GitHub annotations omit unsafe finding paths', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-gh-annotations-path-'));
+  const annotations = renderGithubAnnotations(sampleResult(root, {
+    ok: false,
+    findings: [{ scanner: 'semgrep', severity: 'ERROR', message: 'unsafe path', file: '../outside.js', line: 1 }],
+  }));
+
+  assert.match(annotations, /^::error title=HoldTheGoblin semgrep ERROR::/);
+  assert.doesNotMatch(annotations, /file=/);
+  assert.doesNotMatch(annotations, /\.\.\/outside/);
+});
+
+test('GitHub annotations write only when GitHub Actions env is present', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-gh-annotations-write-'));
+  let output = '';
+
+  assert.throws(() => writeGithubAnnotations(sampleResult(root), { env: {}, write: (content) => { output += content; } }), /GitHub Actions/);
+  writeGithubAnnotations(sampleResult(root, {
+    checks: [{ id: 'warn', label: 'Warning', status: 'warn', severity: 'info', message: 'warning message' }],
+  }), { env: { GITHUB_ACTIONS: 'true' }, write: (content) => { output += content; } });
+  assert.match(output, /::warning /);
 });
 
 function sampleResult(root: string, overrides: Partial<VerifyResult> = {}): VerifyResult {

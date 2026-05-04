@@ -28,7 +28,7 @@ jobs:
         run: npm exec --yes --package=holdthegoblin@latest -- holdthegoblin config validate --format json
 
       - name: Verify with HoldTheGoblin
-        run: npm exec --yes --package=holdthegoblin@latest -- holdthegoblin verify --format markdown --github-step-summary
+        run: npm exec --yes --package=holdthegoblin@latest -- holdthegoblin verify --format markdown --github-step-summary --github-annotations
 
       - name: Upload HoldTheGoblin evidence
         if: always()

@@ -20,11 +20,13 @@ HoldTheGoblin is a safety tool, so roadmap items need measurable enforcement or 
   Acceptance: local report renders checks, findings, edge-case suggestions, and command summaries, redacts known secret patterns before rendering, and escapes report values.
 - CI annotation summary.
   Acceptance: GitHub Actions can publish a concise Markdown step summary that points to the local evidence artifact.
+- CI annotation diagnostics.
+  Acceptance: optional GitHub workflow commands can annotate failed checks, failed commands, warnings/skips, and scanner findings without including raw command stdout/stderr or changing verification exit semantics.
 
 ## Next
 
-- CI annotation diagnostics.
-  Acceptance: optional GitHub workflow commands can annotate failed checks without including raw command stdout/stderr or changing verification exit semantics.
+- Scanner installation recipes.
+  Acceptance: docs and the downstream workflow show optional Semgrep/Trivy setup paths while keeping missing scanners reported as skipped, not passed.
 
 ## Later
 

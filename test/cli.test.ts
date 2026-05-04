@@ -81,3 +81,28 @@ test('verify can append a GitHub Actions step summary', () => {
   assert.match(summary, /\.holdthegoblin\/latest\.md/);
   assert.doesNotMatch(summary, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
+
+test('verify can emit GitHub Actions annotations', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-cli-gh-annotations-'));
+  const env = {
+    ...process.env,
+    GITHUB_ACTIONS: 'true',
+  };
+
+  const output = execFileSync(process.execPath, [cli, 'verify', '--format', 'text', '--github-annotations'], { cwd: root, env, encoding: 'utf8' });
+  assert.match(output, /::warning /);
+  assert.match(output, /HoldTheGoblin PASS/);
+});
+
+test('GitHub Actions annotations are rejected for machine-readable verify stdout', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-cli-gh-annotations-json-'));
+
+  assert.throws(
+    () => execFileSync(process.execPath, [cli, 'verify', '--format', 'json', '--github-annotations'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }),
+    (error) => {
+      const stderr = (error as { stderr?: Buffer }).stderr?.toString() ?? '';
+      assert.match(stderr, /cannot be combined with json or html/);
+      return true;
+    }
+  );
+});

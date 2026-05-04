@@ -75,7 +75,7 @@ The demo uses the real `holdthegoblin hook claude` entrypoint, not a mocked deci
 holdthegoblin --version
 holdthegoblin wrap --agent claude-code|cursor|codex|warp|all [path]
 holdthegoblin init --agent claude-code|cursor|codex|warp|all [--mode relaxed|balanced|strict]
-holdthegoblin verify [--format text|json|markdown|html] [--github-step-summary]
+holdthegoblin verify [--format text|json|markdown|html] [--github-step-summary] [--github-annotations]
 holdthegoblin hook claude
 holdthegoblin checkpoint create|list|rollback [--id latest] [--delete-new]
 holdthegoblin handoff validate --schema schema.json --input payload.json
@@ -96,6 +96,8 @@ holdthegoblin demo
 `verify --format` changes stdout only. Verification reports are still written under `.holdthegoblin/`.
 
 `verify --github-step-summary` appends a concise Markdown job summary to the GitHub Actions `GITHUB_STEP_SUMMARY` file. This is report-only output; the CI gate still passes or fails from the `verify` exit code.
+
+`verify --github-annotations` emits redacted GitHub Actions workflow command annotations for failed checks, failed commands, warnings/skips, and scanner findings. It is log-only report output and cannot be combined with `--format json` or `--format html`.
 
 ## Agent Integrations
 
@@ -274,6 +276,8 @@ Each verification writes:
 ```
 
 In GitHub Actions, pass `--github-step-summary` to add a short Markdown summary to the workflow run page. The summary contains counts, failed checks, warnings/skips, findings, and root-relative evidence paths; it does not include raw command stdout or stderr.
+
+Pass `--github-annotations` to add workflow UI annotations for failed checks, failed commands, warnings/skips, and scanner findings. Annotation messages are redacted and escaped before printing, and command annotations point to the evidence report instead of embedding raw stdout or stderr.
 
 Other commands may also write:
 
