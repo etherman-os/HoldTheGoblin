@@ -7,6 +7,7 @@
 - Added configuration policy-floor findings so weakened test, secret, Semgrep, or Trivy policies are explicit and blocking in strict/release verification.
 - Added documented config schema validation, `config validate`, `config schema`, and MCP `config_validate`.
 - Added downstream GitHub Actions verification workflow template.
+- Added optional Semgrep and Trivy setup recipes with scanner skip semantics and Trivy supply-chain cautions.
 - Added local HTML evidence reports alongside Markdown and JSON verification reports.
 - Added GitHub Actions step summaries and escaped workflow annotations for concise CI evidence with artifact upload guidance.
 - Added installed-package smoke testing, package content allow/deny checks, sourcemap omission, MCP version derivation from package metadata, and fail-closed npm publish token handling.

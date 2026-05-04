@@ -25,6 +25,7 @@ try {
     'SECURITY.md',
     'PRIVACY.md',
     'docs/CONFIG.md',
+    'docs/SCANNERS.md',
     'examples/github-action/holdthegoblin-verify.yml',
     'examples/deploy/holdthegoblin.deploy.json',
   ]) {

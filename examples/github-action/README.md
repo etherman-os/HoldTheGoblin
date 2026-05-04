@@ -8,4 +8,6 @@ The verify step passes `--github-step-summary`, which appends a concise Markdown
 
 Semgrep and Trivy are optional external CLIs. Install them in earlier workflow steps if the repository should use those scanners; otherwise HoldTheGoblin reports them as skipped, not passed.
 
+The workflow includes commented Semgrep and Trivy setup recipes. Replace placeholder versions with reviewed pins before enabling them. For Trivy, review Aqua's current advisory status and avoid floating action tags in security-sensitive CI.
+
 For non-npm projects, keep the Node setup step because HoldTheGoblin runs on Node, then add the project dependency setup commands needed by the repository before the verify step.

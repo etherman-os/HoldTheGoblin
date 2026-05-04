@@ -78,6 +78,8 @@ Valid command keys are `javascript`, `python`, `go`, `rust`, `java`, and `unknow
 
 Semgrep and Trivy are optional external CLIs. If they are missing, HoldTheGoblin reports them as skipped, not passed.
 
+See `docs/SCANNERS.md` for CI installation recipes and supply-chain cautions.
+
 To make Semgrep warnings block:
 
 ```json

@@ -153,6 +153,8 @@ Copy `examples/github-action/holdthegoblin-verify.yml` into `.github/workflows/h
 
 The workflow validates config first, then runs `holdthegoblin verify`, publishes a concise GitHub Actions job summary, and uploads local evidence reports as an artifact. It is a CI gate, not an agent sandbox: failures are enforced by the pull request check result.
 
+Semgrep and Trivy are optional external scanners. See `docs/SCANNERS.md` for setup recipes and current supply-chain cautions.
+
 ## Test Generation
 
 ```bash
@@ -336,6 +338,7 @@ Project docs:
 
 - `docs/ARCHITECTURE.md`: verifier and integration design.
 - `docs/CONFIG.md`: policy, execution, scanner, and observability configuration.
+- `docs/SCANNERS.md`: optional Semgrep/Trivy CI setup recipes.
 - `docs/ROADMAP.md`: what is implemented now and what stays on the V1 roadmap.
 - `PRIVACY.md`: local reads/writes, opt-in network egress, and redaction scope.
 - `CONTRIBUTING.md`: local development and release checklist.

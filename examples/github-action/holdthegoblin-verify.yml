@@ -24,6 +24,20 @@ jobs:
         if: ${{ hashFiles('package-lock.json') != '' }}
         run: npm ci
 
+      # Optional Semgrep setup. Replace the placeholder with a reviewed version.
+      # - uses: actions/setup-python@v6
+      #   with:
+      #     python-version: "3.12"
+      # - name: Install Semgrep
+      #   run: python -m pip install "semgrep==<reviewed-version>"
+
+      # Optional Trivy setup. Review current Aqua advisories and pin the action to an immutable commit SHA.
+      # - name: Install Trivy
+      #   uses: aquasecurity/setup-trivy@<reviewed-40-character-commit-sha>
+      #   with:
+      #     version: <reviewed-trivy-version>
+      #     cache: true
+
       - name: Validate HoldTheGoblin config
         run: npm exec --yes --package=holdthegoblin@latest -- holdthegoblin config validate --format json
 
