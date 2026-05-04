@@ -16,3 +16,10 @@ In Warp cloud environments where the global CLI is not installed, the generated 
 ```bash
 npm exec -- holdthegoblin verify
 ```
+
+For risky command/path checks in Warp, use the advisory preflight command:
+
+```bash
+holdthegoblin risk assess --command "rm -rf /"
+holdthegoblin risk assess --tool Read --path .env
+```

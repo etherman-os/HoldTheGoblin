@@ -111,7 +111,8 @@ Before finishing any coding task:
 4. Before risky refactors or deploy-related edits, run \`holdthegoblin checkpoint create --note "<task>"\`.
 5. For multi-agent handoffs, validate payloads with \`holdthegoblin handoff validate --schema <schema> --input <payload>\`.
 6. For deploy work, use \`holdthegoblin deploy run --plan <plan>\` instead of running production deploy commands directly.
-7. When risky code paths changed, use \`holdthegoblin tests generate\` to create a focused test plan before final verification.
+7. When a risky shell command or tool path is unclear, run \`holdthegoblin risk assess --command "<command>"\` or \`holdthegoblin risk assess --tool Read --path <path>\` before proceeding.
+8. When risky code paths changed, use \`holdthegoblin tests generate\` to create a focused test plan before final verification.
 
 Use \`.holdthegoblin/latest.md\` as the evidence report when explaining what passed or failed.
 `);
@@ -133,8 +134,9 @@ Before finishing coding work:
 5. Before risky refactors, deploy edits, database migrations, or destructive filesystem work, run \`holdthegoblin checkpoint create --note "<task>"\`.
 6. For multi-agent handoffs, validate JSON payloads with \`holdthegoblin handoff validate --schema <schema> --input <payload>\`.
 7. For deploy work, prefer a versioned \`holdthegoblin deploy run --plan <plan>\` flow with shadow/canary health checks and rollback.
-8. When risky code paths changed, run \`holdthegoblin tests generate\` and add real tests before final verification.
-9. When reporting completion, cite \`.holdthegoblin/latest.md\` as the evidence report and mention any warnings that remain.
+8. Use \`holdthegoblin risk assess --command "<command>"\` or \`holdthegoblin risk assess --tool Read --path <path>\` for advisory preflight checks when hard hooks are not available.
+9. When risky code paths changed, run \`holdthegoblin tests generate\` and add real tests before final verification.
+10. When reporting completion, cite \`.holdthegoblin/latest.md\` as the evidence report and mention any warnings that remain.
 
 If \`.agents/skills/holdthegoblin/SKILL.md\` exists, use that skill for verification and release-safety workflows.
 `;
@@ -152,8 +154,9 @@ Warp supports \`AGENTS.md\` as the default project rules file and \`WARP.md\` fo
 2. If \`holdthegoblin\` is not on PATH in a remote/cloud agent environment, try a project-local install with \`npm exec -- holdthegoblin verify\`. If that also fails, stop and report that HoldTheGoblin must be installed.
 3. Use \`holdthegoblin checkpoint create --note "<task>"\` before risky changes.
 4. Never expose credential files to the agent context.
-5. Use \`holdthegoblin deploy run --plan <plan>\` for deploy work.
-6. Use \`.holdthegoblin/latest.md\` as completion evidence.
+5. Use \`holdthegoblin risk assess --command "<command>"\` or \`holdthegoblin risk assess --tool Read --path <path>\` for advisory preflight checks before risky tool calls.
+6. Use \`holdthegoblin deploy run --plan <plan>\` for deploy work.
+7. Use \`.holdthegoblin/latest.md\` as completion evidence.
 `;
   upsertMarkedSection(file, 'holdthegoblin', section);
   return file;
@@ -186,6 +189,7 @@ Use this skill before claiming a coding task is complete.
 5. If Semgrep or Trivy are missing, report them as skipped rather than passed.
 6. Include remaining warnings in the final response.
 7. For risky changed code paths, run \`holdthegoblin tests generate\`, implement the relevant tests, then rerun verification.
+8. Use \`holdthegoblin risk assess --command "<command>"\` or \`holdthegoblin risk assess --tool Read --path <path>\` for advisory preflight checks when hard hooks are not available.
 
 ## Risky Changes
 
@@ -264,15 +268,12 @@ function upsertMarkedSection(file: string, marker: string, section: string): voi
   const end = `<!-- ${marker}:end -->`;
   const block = `${start}\n${section.trim()}\n${end}`;
   const current = existsSync(file) ? readFileSync(file, 'utf8') : '';
-  const pattern = new RegExp(`${escapeRegExp(start)}[\\s\\S]*?${escapeRegExp(end)}`, 'm');
-  const next = pattern.test(current)
-    ? current.replace(pattern, block)
+  const startIndex = current.indexOf(start);
+  const endIndex = startIndex >= 0 ? current.indexOf(end, startIndex + start.length) : -1;
+  const next = startIndex >= 0 && endIndex >= 0
+    ? `${current.slice(0, startIndex)}${block}${current.slice(endIndex + end.length)}`
     : `${current.trimEnd()}${current.trim() ? '\n\n' : ''}${block}\n`;
   writeFileSync(file, next.endsWith('\n') ? next : `${next}\n`);
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function readJson<T>(file: string, fallback: T): T {

@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
+import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
+import { readEvents } from '../src/core/events.js';
 import { handleClaudeHook } from '../src/core/hooks.js';
+import { policyAuditPath } from '../src/core/policy-audit.js';
 
 test('claude pre tool hook denies dangerous bash', async () => {
   const result = await handleClaudeHook(JSON.stringify({
@@ -69,4 +74,47 @@ test('claude hook fails closed on malformed json', async () => {
   const result = await handleClaudeHook('{bad json');
   assert.equal(result.exitCode, 0);
   assert.match(result.stdout, /permissionDecision":"deny/);
+});
+
+test('claude pre tool hook writes redacted policy audit events', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-hook-audit-'));
+  const result = await handleClaudeHook(JSON.stringify({
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Bash',
+    tool_input: { command: 'guard --token raw-secret' },
+    cwd: root,
+  }));
+  assert.equal(result.exitCode, 0);
+  assert.match(result.stdout, /permissionDecision":"deny/);
+
+  const events = readEvents(root, 1);
+  assert.equal(events[0].type, 'policy');
+  assert.equal(events[0].ok, false);
+  const serialized = JSON.stringify(events[0]);
+  assert.match(serialized, /holdthegoblin\.policy_event\.v1/);
+  assert.match(serialized, /holdthegoblin\.policy_decision\.v1/);
+  assert.doesNotMatch(serialized, /raw-secret/);
+
+  const audit = policyAuditPath(root);
+  assert.equal(existsSync(audit), true);
+  assert.doesNotMatch(readFileSync(audit, 'utf8'), /raw-secret/);
+  if (process.platform !== 'win32') {
+    assert.equal(statSync(path.dirname(audit)).mode & 0o777, 0o700);
+    assert.equal(statSync(audit).mode & 0o777, 0o600);
+  }
+});
+
+test('claude pre tool hook caps large policy audit payloads', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-hook-cap-'));
+  const result = await handleClaudeHook(JSON.stringify({
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Bash',
+    tool_input: { command: `echo ${'x'.repeat(9000)}` },
+    cwd: root,
+  }));
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.stdout, '');
+
+  const events = readEvents(root, 1);
+  assert.match(JSON.stringify(events[0]), /\[truncated\]/);
 });

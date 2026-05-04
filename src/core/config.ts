@@ -1,9 +1,9 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { isInsidePath, relativePosix } from './paths.js';
 import { redactSensitiveText } from './redact.js';
-import { evaluatePathReadRisk } from './risk.js';
+import { commandContainsLiteralCredential, evaluatePathReadRisk } from './risk.js';
 import type { GuardMode, HoldTheGoblinConfig } from './types.js';
 
 export const APP_DIR = '.holdthegoblin';
@@ -21,6 +21,7 @@ export const DEFAULT_CONFIG: HoldTheGoblinConfig = {
   execution: {
     timeoutMs: 120_000,
     retries: 1,
+    env: [],
   },
   security: {
     secretScan: true,
@@ -41,7 +42,10 @@ export const DEFAULT_CONFIG: HoldTheGoblinConfig = {
 const guardModeSchema = z.enum(['relaxed', 'balanced', 'strict']);
 const PROJECT_KINDS = ['javascript', 'python', 'go', 'rust', 'java', 'unknown'] as const;
 const severitySchema = z.string().trim().min(1).regex(/^[A-Z]+$/i).transform((value) => value.toUpperCase());
-const commandStringSchema = z.string().trim().min(1);
+const envKeySchema = z.string().trim().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
+const commandStringSchema = z.string().trim().min(1).refine((value) => !commandContainsLiteralCredential(value), {
+  message: 'Command contains a literal credential; use environment references such as $TOKEN instead.',
+});
 const actionUsesSchema = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_./-]+)?@[A-Za-z0-9_./-]+$/);
 const commandsSchema = z.record(z.string(), z.array(commandStringSchema).max(50)).superRefine((value, ctx) => {
   for (const key of Object.keys(value)) {
@@ -68,6 +72,7 @@ const partialConfigSchema = z.object({
   execution: z.object({
     timeoutMs: z.number().int().min(1000).max(30 * 60 * 1000).optional(),
     retries: z.number().int().min(0).max(5).optional(),
+    env: z.array(envKeySchema).max(100).optional(),
   }).strict().optional(),
   security: z.object({
     secretScan: z.boolean().optional(),
@@ -123,6 +128,16 @@ export const CONFIG_JSON_SCHEMA = {
       properties: {
         timeoutMs: { type: 'integer', minimum: 1000, maximum: 1800000 },
         retries: { type: 'integer', minimum: 0, maximum: 5 },
+        env: {
+          type: 'array',
+          maxItems: 100,
+          items: {
+            type: 'string',
+            minLength: 1,
+            pattern: '^[A-Za-z_][A-Za-z0-9_]*$',
+            description: 'Environment variable names to pass through to spawned verification and scanner commands. Values are read from the current process and are not stored in config.',
+          },
+        },
       },
     },
     security: {
@@ -287,8 +302,9 @@ function rejectSensitiveConfigPath(file: string, root?: string): void {
 function ensureRuntimeDir(root: string, dir: string): void {
   const realRoot = realpathSync(root);
   if (existsSync(dir)) assertRuntimeDirSafe(realRoot, dir);
-  mkdirSync(dir, { recursive: true });
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
   assertRuntimeDirSafe(realRoot, dir);
+  setPrivateDirectoryPermissions(dir);
 }
 
 function assertRuntimeDirSafe(realRoot: string, dir: string): void {
@@ -297,6 +313,15 @@ function assertRuntimeDirSafe(realRoot: string, dir: string): void {
   if (!stat.isDirectory()) throw new Error(`HoldTheGoblin runtime path must be a directory: ${dir}`);
   const realDir = realpathSync(dir);
   if (!isInsidePath(realRoot, realDir)) throw new Error(`HoldTheGoblin runtime directory resolves outside project root: ${dir}`);
+}
+
+function setPrivateDirectoryPermissions(dir: string): void {
+  if (process.platform === 'win32') return;
+  try {
+    chmodSync(dir, 0o700);
+  } catch {
+    // Best-effort permission hardening; symlink/root checks above remain blocking.
+  }
 }
 
 const KNOWN_CONFIG_PATH_SEGMENTS = new Set([
@@ -311,6 +336,7 @@ const KNOWN_CONFIG_PATH_SEGMENTS = new Set([
   'execution',
   'timeoutMs',
   'retries',
+  'env',
   'security',
   'secretScan',
   'semgrep',

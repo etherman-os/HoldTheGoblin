@@ -106,3 +106,31 @@ test('GitHub Actions annotations are rejected for machine-readable verify stdout
     }
   );
 });
+
+test('risk assess reports advisory tool-call decisions through CLI', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-cli-risk-'));
+  assert.throws(
+    () => execFileSync(process.execPath, [cli, 'risk', 'assess', '--command', 'rm -rf --no-preserve-root /', '--format', 'json'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }),
+    (error) => {
+      const stdout = (error as { stdout?: Buffer }).stdout?.toString() ?? '';
+      assert.match(stdout, /"decision": "deny"/);
+      assert.match(stdout, /Destructive rm target/);
+      return true;
+    }
+  );
+
+  const allowed = execFileSync(process.execPath, [cli, 'risk', 'assess', '--tool', 'Read', '--path', 'src/app.ts', '--format', 'json'], { cwd: root, encoding: 'utf8' });
+  assert.match(allowed, /"decision": "allow"/);
+});
+
+test('mcp-http rejects literal auth token flag outside loopback', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-cli-mcp-token-'));
+  assert.throws(
+    () => execFileSync(process.execPath, [cli, 'mcp-http', '--host', '0.0.0.0', '--port', '0', '--allowed-host', 'example.com', '--auth-token', 'long-enough-token'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }),
+    (error) => {
+      const stderr = (error as { stderr?: Buffer }).stderr?.toString() ?? '';
+      assert.match(stderr, /HOLDTHEGOBLIN_MCP_HTTP_TOKEN/);
+      return true;
+    }
+  );
+});

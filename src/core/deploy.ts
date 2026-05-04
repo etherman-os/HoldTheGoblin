@@ -5,10 +5,10 @@ import { z } from 'zod';
 import { createCheckpoint, rollbackCheckpoint, type CheckpointMeta } from './checkpoint.js';
 import { appPath, ensureAppDirs, loadConfig } from './config.js';
 import { appendEvent } from './events.js';
-import { resolveInsideProject } from './paths.js';
+import { resolveExistingInsideProject } from './paths.js';
 import { redactSensitiveData, redactSensitiveText } from './redact.js';
 import { runId } from './report.js';
-import { evaluateCommandRisk } from './risk.js';
+import { commandContainsLiteralCredential, evaluateCommandRisk } from './risk.js';
 import { runShell } from './runner.js';
 import { verify } from './verify.js';
 import type { CommandResult, PlannedCommand, VerifyResult } from './types.js';
@@ -16,11 +16,14 @@ import type { CommandResult, PlannedCommand, VerifyResult } from './types.js';
 const commandSchema = z.object({
   command: z.string().min(1).optional(),
   argv: z.array(z.string().min(1)).min(1).optional(),
+  env: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/)).max(50).optional(),
   timeoutMs: z.number().int().positive().optional(),
   retries: z.number().int().nonnegative().optional(),
   allowDangerous: z.boolean().default(false),
 }).refine((value) => Boolean(value.command) !== Boolean(value.argv), {
   message: 'Set exactly one of "command" or "argv". Prefer "argv" for new deploy plans.',
+}).refine((value) => !commandContainsLiteralCredential(commandTextForSchemaSpec(value)), {
+  message: 'Deploy command contains a literal credential; use environment references such as $TOKEN instead.',
 });
 
 const deployPlanSchema = z.object({
@@ -103,8 +106,8 @@ export async function runDeployPlan(options: {
   const startedAt = new Date().toISOString();
   const deployRunId = runId();
   const root = options.root;
-  const planPath = resolveInsideProject(root, options.planPath);
-  if (!existsSync(planPath)) throw new Error(`Deploy plan not found: ${planPath}`);
+  if (!existsSync(path.resolve(root, options.planPath))) throw new Error(`Deploy plan not found: ${options.planPath}`);
+  const planPath = resolveExistingInsideProject(root, options.planPath);
 
   const config = loadConfig(root);
   const plan = readDeployPlan(planPath);
@@ -178,11 +181,11 @@ export async function runDeployPlan(options: {
   for (const phase of ['shadow', 'shadowHealth', 'canary', 'canaryHealth', 'promote'] as const) {
     const spec = plan[phase];
     if (!spec) continue;
-    const commandResult = await runDeployCommand(phase, spec, root, config.execution.timeoutMs, config.execution.retries, options.allowDangerous === true);
+    const commandResult = await runDeployCommand(phase, spec, root, config.execution.timeoutMs, config.execution.retries, config.execution.env, options.allowDangerous === true);
     phases.push({ phase, ok: commandResult.exitCode === 0 && !commandResult.timedOut, commandResult });
     if (commandResult.exitCode !== 0 || commandResult.timedOut) {
       if (plan.rollback) {
-        const rollbackResult = await runDeployCommand('rollback', plan.rollback, root, config.execution.timeoutMs, 0, options.allowDangerous === true);
+        const rollbackResult = await runDeployCommand('rollback', plan.rollback, root, config.execution.timeoutMs, 0, config.execution.env, options.allowDangerous === true);
         phases.push({ phase: 'rollback', ok: rollbackResult.exitCode === 0 && !rollbackResult.timedOut, commandResult: rollbackResult });
       }
       if (checkpoint && plan.rollbackCheckpoint) {
@@ -230,6 +233,7 @@ async function runDeployCommand(
   root: string,
   defaultTimeoutMs: number,
   defaultRetries: number,
+  defaultEnv: string[],
   allowDangerous: boolean
 ): Promise<CommandResult> {
   const commandText = commandTextForSpec(spec);
@@ -255,6 +259,7 @@ async function runDeployCommand(
     label: `Deploy ${phase}`,
     command: commandText,
     argv: spec.argv,
+    env: spec.env,
     shell: spec.argv ? false : true,
     kind: 'deploy',
     required: true,
@@ -264,6 +269,7 @@ async function runDeployCommand(
     cwd: root,
     timeoutMs: spec.timeoutMs ?? defaultTimeoutMs,
     retries: spec.retries ?? defaultRetriesForPhase(phase, defaultRetries),
+    env: defaultEnv,
   });
 }
 
@@ -295,6 +301,11 @@ function defaultRetriesForPhase(phase: DeployPhaseResult['phase'], configuredRet
 }
 
 function commandTextForSpec(spec: DeployCommandSpec): string {
+  if (spec.command) return spec.command;
+  return renderArgv(spec.argv ?? []);
+}
+
+function commandTextForSchemaSpec(spec: { command?: string; argv?: string[] }): string {
   if (spec.command) return spec.command;
   return renderArgv(spec.argv ?? []);
 }

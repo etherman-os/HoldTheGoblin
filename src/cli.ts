@@ -14,7 +14,8 @@ import { exportObservability, type ObservabilityProvider } from './core/observab
 import { writeGithubAnnotations, writeGithubStepSummary } from './core/github.js';
 import { renderTextSummary } from './core/output.js';
 import { readPackageVersion } from './core/package.js';
-import { resolveInsideProject } from './core/paths.js';
+import { resolveExistingInsideProject, resolveInsideProject } from './core/paths.js';
+import { auditPolicyDecision, evaluateToolCallPreflight } from './core/preflight.js';
 import { commandExists } from './core/runner.js';
 import { CONFIG_JSON_SCHEMA, configPath, loadConfig, validateConfigFile, validateProjectConfig } from './core/config.js';
 import { generateTests, type TestGenerationProvider } from './core/testgen.js';
@@ -53,6 +54,8 @@ async function main(): Promise<number> {
         return cmdCheckpoint(args, root);
       case 'handoff':
         return cmdHandoff(args);
+      case 'risk':
+        return cmdRisk(args, root);
       case 'config':
         return cmdConfig(args, root);
       case 'doctor':
@@ -176,7 +179,7 @@ async function cmdHandoff(args: ParsedArgs): Promise<number> {
   const input = stringFlag(args, 'input');
   if (!schema || !input) throw new Error('handoff validate requires --schema and --input');
   const root = await findGitRoot(process.cwd());
-  const result = validateHandoffFiles(resolveInsideProject(root, schema), resolveInsideProject(root, input));
+  const result = validateHandoffFiles(resolveExistingInsideProject(root, schema), resolveExistingInsideProject(root, input));
   if (result.ok) {
     console.log('Handoff payload is valid.');
     return 0;
@@ -184,6 +187,26 @@ async function cmdHandoff(args: ParsedArgs): Promise<number> {
   console.log('Handoff payload is invalid:');
   for (const issue of result.issues) console.log(`- ${issue.path}: ${issue.message}`);
   return 1;
+}
+
+async function cmdRisk(args: ParsedArgs, root: string): Promise<number> {
+  if (args.subcommand !== 'assess') throw new Error('Usage: holdthegoblin risk assess --command <shell> OR --tool Read --path <path>');
+  const command = stringFlag(args, 'command');
+  const pathValue = stringFlag(args, 'path');
+  const toolName = stringFlag(args, 'tool') ?? (command ? 'Bash' : 'Read');
+  if (!command && !pathValue) throw new Error('risk assess requires --command or --path.');
+  const toolInput: Record<string, unknown> = command ? { command } : { path: pathValue };
+  const preflight = evaluateToolCallPreflight({ host: 'cli', root, cwd: root, toolName, toolInput });
+  auditPolicyDecision(root, preflight);
+  const result = preflight.decision;
+
+  if (stringFlag(args, 'format') === 'json') {
+    console.log(JSON.stringify({ toolName, decision: result.decision, reason: result.reason }, null, 2));
+  } else {
+    console.log(`HoldTheGoblin ${result.decision.toUpperCase()}: ${result.reason}`);
+  }
+
+  return result.decision === 'allow' ? 0 : result.decision === 'ask' ? 3 : 4;
 }
 
 async function cmdConfig(args: ParsedArgs, root: string): Promise<number> {
@@ -277,14 +300,23 @@ async function cmdMcp(root: string): Promise<number> {
 
 async function cmdMcpHttp(args: ParsedArgs, root: string): Promise<number> {
   const { runMcpHttpServer } = await import('./mcp.js');
+  const host = stringFlag(args, 'host') ?? '127.0.0.1';
+  const cliToken = stringFlag(args, 'auth-token');
+  if (cliToken && !isLoopbackHost(host)) {
+    throw new Error('Use HOLDTHEGOBLIN_MCP_HTTP_TOKEN instead of --auth-token when binding MCP HTTP outside loopback.');
+  }
   await runMcpHttpServer({
-    host: stringFlag(args, 'host') ?? '127.0.0.1',
+    host,
     port: Number(stringFlag(args, 'port') ?? '3333'),
     allowedHosts: collectFlags(args, 'allowed-host'),
-    authToken: stringFlag(args, 'auth-token') ?? process.env.HOLDTHEGOBLIN_MCP_HTTP_TOKEN,
+    authToken: cliToken ?? process.env.HOLDTHEGOBLIN_MCP_HTTP_TOKEN,
     root,
   });
   return 0;
+}
+
+function isLoopbackHost(host: string): boolean {
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1';
 }
 
 async function cmdDeploy(args: ParsedArgs, root: string): Promise<number> {
@@ -473,7 +505,7 @@ function collectFlags(args: ParsedArgs, key: string): string[] {
 }
 
 function commandAcceptsSubcommand(command: string | undefined): boolean {
-  return new Set(['hook', 'checkpoint', 'handoff', 'config', 'deploy', 'observability', 'tests', 'models']).has(command ?? '');
+  return new Set(['hook', 'checkpoint', 'handoff', 'risk', 'config', 'deploy', 'observability', 'tests', 'models']).has(command ?? '');
 }
 
 const BOOLEAN_FLAGS = new Set(['delete-new', 'dry-run', 'send', 'help', 'h', 'allow-dangerous', 'github-step-summary', 'github-annotations']);
@@ -499,6 +531,8 @@ Usage:
   holdthegoblin hook claude
   holdthegoblin checkpoint create|list|rollback [--id latest] [--delete-new]
   holdthegoblin handoff validate --schema schema.json --input payload.json
+  holdthegoblin risk assess --command "rm -rf /" [--format json]
+  holdthegoblin risk assess --tool Read --path .env [--format json]
   holdthegoblin config validate [--path .holdthegoblin/config.json] [--format json]
   holdthegoblin config schema
   holdthegoblin doctor

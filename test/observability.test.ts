@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -96,6 +96,51 @@ test('observability send handles success, server errors, missing env, and timeou
   }
 });
 
+test('observability send validates endpoints and does not follow redirects', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-observe-url-'));
+  const result = sampleVerifyResult(root);
+  const runs = appPath(root, 'runs');
+  mkdirSync(runs, { recursive: true });
+  writeFileSync(path.join(runs, `${result.runId}.json`), JSON.stringify(result));
+
+  let redirected = 0;
+  const targetServer = await startServer((_req, res) => {
+    redirected += 1;
+    res.writeHead(200).end('redirect target');
+  });
+  const redirectServer = await startServer((_req, res) => {
+    res.writeHead(307, { location: targetServer.url }).end('redirect');
+  });
+
+  const previous = snapshotEnv(['AGENTOPS_INGEST_URL', 'AGENTOPS_API_KEY']);
+  try {
+    process.env.AGENTOPS_API_KEY = 'agentops-key';
+
+    process.env.AGENTOPS_INGEST_URL = 'http://example.invalid/ingest';
+    const insecure = await exportObservability({ root, provider: 'agentops', send: true, sendTimeoutMs: 500 });
+    assert.match(insecure[0].error ?? '', /HTTPS/);
+
+    process.env.AGENTOPS_INGEST_URL = 'https://user:pass@example.invalid/ingest';
+    const userinfo = await exportObservability({ root, provider: 'agentops', send: true, sendTimeoutMs: 500 });
+    assert.match(userinfo[0].error ?? '', /URL credentials/);
+
+    process.env.AGENTOPS_INGEST_URL = 'https://example.invalid/ingest?api_key%3Draw-secret';
+    const encoded = await exportObservability({ root, provider: 'agentops', send: true, sendTimeoutMs: 500 });
+    assert.match(encoded[0].error ?? '', /credential-like/);
+    assert.doesNotMatch(encoded[0].error ?? '', /raw-secret/);
+
+    process.env.AGENTOPS_INGEST_URL = redirectServer.url;
+    const redirect = await exportObservability({ root, provider: 'agentops', send: true, sendTimeoutMs: 500 });
+    assert.equal(redirect[0].ok, false);
+    assert.equal(redirect[0].status, 307);
+    assert.equal(redirected, 0);
+  } finally {
+    restoreEnv(previous);
+    await redirectServer.close();
+    await targetServer.close();
+  }
+});
+
 test('observability export rejects run paths outside the project root', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'htg-observe-outside-'));
   await assert.rejects(
@@ -111,6 +156,20 @@ test('observability export only reads HoldTheGoblin run reports', async () => {
   await assert.rejects(
     exportObservability({ root, provider: 'all', run: 'arbitrary.json' }),
     /under \.holdthegoblin\/runs/
+  );
+});
+
+test('observability export rejects run symlinks that resolve outside the project root', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-observe-symlink-'));
+  const runs = appPath(root, 'runs');
+  mkdirSync(runs, { recursive: true });
+  const outside = path.join(tmpdir(), `htg-observe-outside-${Date.now()}.json`);
+  writeFileSync(outside, JSON.stringify(sampleVerifyResult(root)));
+  symlinkSync(outside, path.join(runs, 'linked.json'));
+
+  await assert.rejects(
+    exportObservability({ root, provider: 'all', run: '.holdthegoblin/runs/linked.json' }),
+    /resolves outside project root/
   );
 });
 

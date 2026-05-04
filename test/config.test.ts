@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { DEFAULT_CONFIG, configPath, loadConfig, validateConfigFile, validateConfigObject, validateProjectConfig } from '../src/core/config.js';
+import { DEFAULT_CONFIG, appPath, configPath, ensureAppDirs, loadConfig, validateConfigFile, validateConfigObject, validateProjectConfig } from '../src/core/config.js';
 import { detectProject } from '../src/core/detect.js';
 import { evaluateResults, isOk } from '../src/core/policy.js';
 import type { HoldTheGoblinConfig } from '../src/core/types.js';
@@ -35,6 +35,9 @@ test('config validation normalizes severities and trims command/action lists', (
       semgrepSeverities: ['error'],
       trivySeverities: ['high', 'critical'],
     },
+    execution: {
+      env: [' API_TOKEN ', 'DEPLOY_TOKEN'],
+    },
     githubActions: {
       allowedUnpinnedActions: [' actions/checkout@v6 '],
     },
@@ -45,6 +48,7 @@ test('config validation normalizes severities and trims command/action lists', (
 
   assert.deepEqual(parsed.failPolicy?.semgrepSeverities, ['ERROR']);
   assert.deepEqual(parsed.failPolicy?.trivySeverities, ['HIGH', 'CRITICAL']);
+  assert.deepEqual(parsed.execution?.env, ['API_TOKEN', 'DEPLOY_TOKEN']);
   assert.deepEqual(parsed.githubActions?.allowedUnpinnedActions, ['actions/checkout@v6']);
   assert.deepEqual(parsed.commands?.javascript, ['npm run test:unit']);
 });
@@ -53,13 +57,14 @@ test('config validation reports precise paths for invalid values', () => {
   assert.throws(
     () => validateConfigObject({
       version: 2,
-      execution: { timeoutMs: 10 },
+      execution: { timeoutMs: 10, env: ['bad-key'] },
       unknown: true,
     }),
     (error) => {
       const issues = (error as { issues?: Array<{ path: string }> }).issues ?? [];
       assert.ok(issues.some((issue) => issue.path === '$.version'));
       assert.ok(issues.some((issue) => issue.path === '$.execution.timeoutMs'));
+      assert.ok(issues.some((issue) => issue.path === '$.execution.env[0]'));
       assert.ok(issues.some((issue) => issue.path === '$'));
       return true;
     }
@@ -87,6 +92,21 @@ test('config validation rejects blank commands and sanitizes untrusted keys', ()
       return true;
     }
   );
+});
+
+test('config validation rejects persisted literal credentials in commands', () => {
+  assert.throws(
+    () => validateConfigObject({ commands: { javascript: ['deploy --token raw-secret'] } }),
+    (error) => {
+      const text = JSON.stringify((error as { issues?: unknown }).issues ?? []);
+      assert.match(text, /literal credential/);
+      assert.doesNotMatch(text, /raw-secret/);
+      return true;
+    }
+  );
+
+  const parsed = validateConfigObject({ commands: { javascript: ['deploy --token $TOKEN'] } });
+  assert.deepEqual(parsed.commands?.javascript, ['deploy --token $TOKEN']);
 });
 
 test('loadConfig rejects invalid repo config instead of merging unsafe types', () => {
@@ -127,6 +147,14 @@ test('config validation rejects sensitive paths and symlink escapes before readi
   const escaped = validateProjectConfig(root);
   assert.equal(escaped.ok, false);
   assert.match(escaped.issues.map((issue) => issue.message).join('\n'), /outside project root/i);
+});
+
+test('runtime directories use private unix permissions', { skip: process.platform === 'win32' }, () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-runtime-mode-'));
+  ensureAppDirs(root);
+  for (const dir of [appPath(root), appPath(root, 'runs'), appPath(root, 'checkpoints'), appPath(root, 'tmp')]) {
+    assert.equal(statSync(dir).mode & 0o777, 0o700, dir);
+  }
 });
 
 test('blank programmatic commands cannot satisfy missing-test policy', () => {

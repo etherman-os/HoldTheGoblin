@@ -14,6 +14,7 @@ export interface HoldTheGoblinConfig {
   execution: {
     timeoutMs: number;
     retries: number;
+    env: string[];
   };
   security: {
     secretScan: boolean;
@@ -47,9 +48,18 @@ export interface PlannedCommand {
   command: string;
   argv?: string[];
   shell?: boolean;
+  env?: string[];
   kind: ProjectKind | 'security' | 'doctor' | 'deploy' | 'testgen' | 'observability';
   required: boolean;
   reason: string;
+}
+
+export interface CommandEnvSummary {
+  allowedKeys: string[];
+  explicitKeys: string[];
+  blockedSensitiveKeys: string[];
+  blockedSensitiveCount: number;
+  omittedAmbientCount: number;
 }
 
 export interface CommandResult {
@@ -66,6 +76,7 @@ export interface CommandResult {
   attempts: number;
   stdoutTruncated?: boolean;
   stderrTruncated?: boolean;
+  env?: CommandEnvSummary;
 }
 
 export type CheckStatus = 'pass' | 'fail' | 'warn' | 'skip';
@@ -118,12 +129,32 @@ export interface VerifyResult {
 
 export interface GuardEvent {
   id: string;
-  type: 'init' | 'verify' | 'hook' | 'checkpoint' | 'handoff' | 'deploy' | 'observability' | 'testgen' | 'mcp';
+  type: 'init' | 'verify' | 'hook' | 'policy' | 'checkpoint' | 'handoff' | 'deploy' | 'observability' | 'testgen' | 'mcp';
   timestamp: string;
   root: string;
   ok?: boolean;
   summary: string;
   data?: unknown;
+}
+
+export type PolicyActionType = 'shell_command' | 'file_read' | 'file_write' | 'tool_call';
+
+export interface PolicyEvent {
+  schema: 'holdthegoblin.policy_event.v1';
+  id: string;
+  timestamp: string;
+  host: 'claude-code' | 'cli' | 'mcp' | 'unknown';
+  actionType: PolicyActionType;
+  cwd?: string;
+  toolName?: string;
+  action: Record<string, unknown>;
+}
+
+export interface PolicyDecision {
+  schema: 'holdthegoblin.policy_decision.v1';
+  eventId: string;
+  decision: 'allow' | 'ask' | 'deny';
+  reason: string;
 }
 
 export interface HookInput {

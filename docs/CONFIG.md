@@ -34,7 +34,8 @@ Default shape:
   },
   "execution": {
     "timeoutMs": 120000,
-    "retries": 1
+    "retries": 1,
+    "env": []
   },
   "security": {
     "secretScan": true,
@@ -138,6 +139,20 @@ Allowlisted refs are still surfaced as warnings so CI drift stays visible.
 ## Execution
 
 `timeoutMs` applies per command attempt. HoldTheGoblin terminates the process tree when a command times out. `retries` applies to retryable command failures such as timeouts and transient network errors.
+
+Spawned commands inherit only a minimal safe environment by default. Sensitive ambient variables such as token, secret, password, credential, auth, and private-key names are not passed through unless explicitly allowlisted by key name.
+
+Use `execution.env` for verification and scanner commands that need reviewed environment variables:
+
+```json
+{
+  "execution": {
+    "env": ["DATABASE_URL", "API_TOKEN"]
+  }
+}
+```
+
+Deploy plans also support per-command `env` arrays. Values are read from the current process and are not stored in config, deploy plans, reports, or audit events.
 
 ## Observability
 

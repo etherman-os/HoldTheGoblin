@@ -1,12 +1,46 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import { redactSensitiveText } from './redact.js';
-import type { CommandResult, PlannedCommand } from './types.js';
+import type { CommandEnvSummary, CommandResult, PlannedCommand } from './types.js';
 
 export interface RunOptions {
   cwd: string;
   timeoutMs: number;
   retries: number;
+  env?: string[];
 }
+
+export interface CommandEnvironment {
+  env: NodeJS.ProcessEnv;
+  summary: CommandEnvSummary;
+}
+
+const DEFAULT_ENV_KEYS = new Set([
+  'CI',
+  'COLORTERM',
+  'COMSPEC',
+  'FORCE_COLOR',
+  'HOME',
+  'HOMEDRIVE',
+  'HOMEPATH',
+  'LANG',
+  'NO_COLOR',
+  'PATH',
+  'PATHEXT',
+  'SHELL',
+  'SYSTEMROOT',
+  'SystemRoot',
+  'TEMP',
+  'TERM',
+  'TMP',
+  'TMPDIR',
+  'USER',
+  'USERPROFILE',
+  'WINDIR',
+]);
+
+const DEFAULT_ENV_PREFIXES = [/^LC_[A-Z0-9_]*$/];
+const SENSITIVE_ENV_KEY = /(?:TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE|CREDENTIAL|AUTH|COOKIE|SESSION|API[_-]?KEY|ACCESS[_-]?KEY|CLIENT[_-]?SECRET|BEARER|AWS_|AZURE_|GCP_|GOOGLE_|OPENAI_|ANTHROPIC_|GITHUB_|GITLAB_|NPM_.*TOKEN)/i;
+const MAX_ENV_SUMMARY_KEYS = 50;
 
 export async function commandExists(command: string, cwd: string): Promise<boolean> {
   const probe = process.platform === 'win32' ? `where ${command}` : `command -v ${command}`;
@@ -50,21 +84,8 @@ function runOnce(command: PlannedCommand, options: RunOptions, attempts: number)
     let timedOut = false;
     let settled = false;
 
-    const child = command.argv && command.argv.length > 0
-      ? spawn(command.argv[0], command.argv.slice(1), {
-          cwd: options.cwd,
-          shell: false,
-          stdio: ['ignore', 'pipe', 'pipe'],
-          env: { ...process.env, CI: process.env.CI ?? '1' },
-          detached: process.platform !== 'win32',
-        })
-      : spawn(command.command, {
-          cwd: options.cwd,
-          shell: command.shell ?? true,
-          stdio: ['ignore', 'pipe', 'pipe'],
-          env: { ...process.env, CI: process.env.CI ?? '1' },
-          detached: process.platform !== 'win32',
-        });
+    const childEnv = buildCommandEnvironment(process.env, [...(options.env ?? []), ...(command.env ?? [])]);
+    const child = spawnPlannedCommand(command, options.cwd, childEnv.env);
 
     const timer = setTimeout(() => {
       timedOut = true;
@@ -108,6 +129,7 @@ function runOnce(command: PlannedCommand, options: RunOptions, attempts: number)
         attempts,
         stdoutTruncated,
         stderrTruncated,
+        env: childEnv.summary,
       });
     });
 
@@ -128,9 +150,73 @@ function runOnce(command: PlannedCommand, options: RunOptions, attempts: number)
         attempts,
         stdoutTruncated,
         stderrTruncated,
+        env: childEnv.summary,
       });
     });
   });
+}
+
+export function buildCommandEnvironment(source: NodeJS.ProcessEnv = process.env, explicitAllow: string[] = []): CommandEnvironment {
+  const env: NodeJS.ProcessEnv = {};
+  const explicitKeys = uniqueEnvKeys(explicitAllow);
+  const explicit = new Set(explicitKeys);
+  const blockedSensitiveKeys: string[] = [];
+  let omittedAmbientCount = 0;
+
+  for (const [key, value] of Object.entries(source)) {
+    if (value === undefined) continue;
+    if (explicit.has(key) || isDefaultAllowedEnvKey(key)) {
+      env[key] = value;
+      continue;
+    }
+    if (isSensitiveEnvKey(key)) blockedSensitiveKeys.push(key);
+    else omittedAmbientCount += 1;
+  }
+
+  env.CI = env.CI ?? '1';
+
+  const allowedKeys = Object.keys(env).sort();
+  return {
+    env,
+    summary: {
+      allowedKeys: allowedKeys.slice(0, MAX_ENV_SUMMARY_KEYS),
+      explicitKeys: explicitKeys.filter((key) => env[key] !== undefined).slice(0, MAX_ENV_SUMMARY_KEYS),
+      blockedSensitiveKeys: blockedSensitiveKeys.sort().slice(0, MAX_ENV_SUMMARY_KEYS),
+      blockedSensitiveCount: blockedSensitiveKeys.length,
+      omittedAmbientCount,
+    },
+  };
+}
+
+function spawnPlannedCommand(command: PlannedCommand, cwd: string, env: NodeJS.ProcessEnv): ChildProcess {
+  const options: SpawnOptions = {
+    cwd,
+    shell: false,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env,
+    detached: process.platform !== 'win32',
+  };
+  if (command.argv && command.argv.length > 0) {
+    return spawn(command.argv[0], command.argv.slice(1), options);
+  }
+  if (command.shell === false) {
+    return spawn(command.command, [], options);
+  }
+  const shell = process.platform === 'win32' ? process.env.ComSpec ?? 'cmd.exe' : '/bin/sh';
+  const args = process.platform === 'win32' ? ['/d', '/s', '/c', command.command] : ['-c', command.command];
+  return spawn(shell, args, options);
+}
+
+function uniqueEnvKeys(keys: string[]): string[] {
+  return [...new Set(keys.filter((key) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key)))].sort();
+}
+
+function isDefaultAllowedEnvKey(key: string): boolean {
+  return DEFAULT_ENV_KEYS.has(key) || DEFAULT_ENV_PREFIXES.some((pattern) => pattern.test(key));
+}
+
+function isSensitiveEnvKey(key: string): boolean {
+  return SENSITIVE_ENV_KEY.test(key);
 }
 
 function isRetryable(result: CommandResult): boolean {

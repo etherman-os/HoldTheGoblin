@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -102,6 +102,116 @@ test('deploy guard blocks denied destructive commands by default', async () => {
   const result = await runDeployPlan({ root, planPath });
   assert.equal(result.ok, false);
   assert.match(phase(result, 'shadow').commandResult?.stderr ?? '', /Blocked by HoldTheGoblin/);
+});
+
+test('deploy plan validation rejects persisted literal credentials', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-deploy-secret-plan-'));
+  const planPath = path.join(root, 'deploy.json');
+  writeFileSync(planPath, JSON.stringify({
+    version: 1,
+    name: 'secret-plan',
+    verify: false,
+    checkpoint: false,
+    allowPolicyDowngrade: true,
+    shadow: { argv: ['deploy', '--api-key', 'raw-secret'] },
+  }));
+
+  await assert.rejects(
+    runDeployPlan({ root, planPath, allowDangerous: true }),
+    (error) => {
+      assert.match(String((error as Error).message), /literal credential/);
+      assert.doesNotMatch(String((error as Error).message), /raw-secret/);
+      return true;
+    }
+  );
+
+  writeFileSync(planPath, JSON.stringify({
+    version: 1,
+    name: 'env-ref-plan',
+    verify: false,
+    checkpoint: false,
+    allowPolicyDowngrade: true,
+    shadow: { argv: ['deploy', '--api-key', '$TOKEN'] },
+  }));
+  const result = await runDeployPlan({ root, planPath, dryRun: true, allowDangerous: true });
+  assert.equal(result.ok, true);
+});
+
+test('deploy command env allowlist passes key names without persisting values', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-deploy-env-'));
+  const key = 'HTG_DEPLOY_TEST_TOKEN';
+  const value = 'sk-' + '1234567890abcdefghijklmnopqrstuvwxyzABCDE'; // holdthegoblin: allow-secret
+  const previous = process.env[key];
+  process.env[key] = value;
+  const script = writeNodeScript(root, 'env.js', 'process.stdout.write(process.env.HTG_DEPLOY_TEST_TOKEN || "missing");\n');
+  const planPath = path.join(root, 'deploy.json');
+  try {
+    writeFileSync(planPath, JSON.stringify({
+      version: 1,
+      name: 'env-allowlist',
+      verify: false,
+      checkpoint: false,
+      allowPolicyDowngrade: true,
+      shadow: { argv: [process.execPath, script] },
+    }));
+    const blocked = await runDeployPlan({ root, planPath, allowDangerous: true });
+    assert.equal(phase(blocked, 'shadow').commandResult?.stdout, 'missing');
+
+    writeFileSync(planPath, JSON.stringify({
+      version: 1,
+      name: 'env-allowlist',
+      verify: false,
+      checkpoint: false,
+      allowPolicyDowngrade: true,
+      shadow: { argv: [process.execPath, script], env: [key] },
+    }));
+    const allowed = await runDeployPlan({ root, planPath, allowDangerous: true });
+    assert.match(phase(allowed, 'shadow').commandResult?.stdout ?? '', /sk-\[redacted\]/);
+    assert.doesNotMatch(JSON.stringify(allowed), /abcdefghijklmnopqrstuvwxyz/);
+    assert.deepEqual(phase(allowed, 'shadow').commandResult?.env?.explicitKeys, [key]);
+  } finally {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+  }
+});
+
+test('deploy command env allowlist combines config and command keys', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-deploy-config-env-'));
+  const configKey = 'HTG_DEPLOY_CONFIG_TOKEN';
+  const commandKey = 'HTG_DEPLOY_COMMAND_TOKEN';
+  const configPrevious = process.env[configKey];
+  const commandPrevious = process.env[commandKey];
+  process.env[configKey] = 'sk-' + '1234567890abcdefghijklmnopqrstuvwxyzABCDE'; // holdthegoblin: allow-secret
+  process.env[commandKey] = 'sk-' + 'ABCDEabcdefghijklmnopqrstuvwxyz1234567890'; // holdthegoblin: allow-secret
+  mkdirSync(path.join(root, '.holdthegoblin'), { recursive: true });
+  writeFileSync(path.join(root, '.holdthegoblin', 'config.json'), JSON.stringify({
+    version: 1,
+    execution: { env: [configKey] },
+  }));
+  const script = writeNodeScript(root, 'combined-env.js', [
+    'const keys = ["HTG_DEPLOY_CONFIG_TOKEN", "HTG_DEPLOY_COMMAND_TOKEN"];',
+    'process.stdout.write(keys.map((key) => process.env[key] ? "set" : "missing").join(","));',
+  ].join('\n'));
+  const planPath = path.join(root, 'deploy.json');
+  try {
+    writeFileSync(planPath, JSON.stringify({
+      version: 1,
+      name: 'combined-env',
+      verify: false,
+      checkpoint: false,
+      allowPolicyDowngrade: true,
+      shadow: { argv: [process.execPath, script], env: [commandKey] },
+    }));
+    const result = await runDeployPlan({ root, planPath, allowDangerous: true });
+    const commandResult = phase(result, 'shadow').commandResult;
+    assert.equal(commandResult?.stdout, 'set,set');
+    assert.deepEqual(commandResult?.env?.explicitKeys, [commandKey, configKey].sort());
+  } finally {
+    if (configPrevious === undefined) delete process.env[configKey];
+    else process.env[configKey] = configPrevious;
+    if (commandPrevious === undefined) delete process.env[commandKey];
+    else process.env[commandKey] = commandPrevious;
+  }
 });
 
 test('deploy guard does not let allowDangerous bypass hard deny rules', async () => {
@@ -275,6 +385,23 @@ test('deploy rejects plan paths outside the project root', async () => {
   await assert.rejects(
     runDeployPlan({ root, planPath: outside }),
     /escapes project root/
+  );
+});
+
+test('deploy rejects plan symlinks that resolve outside the project root', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-deploy-symlink-'));
+  const outside = path.join(tmpdir(), `htg-deploy-outside-${Date.now()}.json`);
+  writeFileSync(outside, JSON.stringify({
+    version: 1,
+    name: 'outside-symlink',
+    verify: false,
+    checkpoint: false,
+  }));
+  symlinkSync(outside, path.join(root, 'deploy.json'));
+
+  await assert.rejects(
+    runDeployPlan({ root, planPath: 'deploy.json' }),
+    /resolves outside project root/
   );
 });
 

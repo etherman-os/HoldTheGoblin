@@ -1,4 +1,4 @@
-import { appendFileSync, closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
+import { appendFileSync, chmodSync, closeSync, lstatSync, openSync, readFileSync, readSync, statSync, type Stats } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { appPath, ensureAppDirs } from './config.js';
 import { redactSensitiveData } from './redact.js';
@@ -14,13 +14,16 @@ export function appendEvent(root: string, event: Omit<GuardEvent, 'id' | 'timest
   };
   const safe = redactSensitiveData(full);
   const file = eventLogPath(root);
-  appendFileSync(file, `${JSON.stringify(safe)}\n`);
+  assertEventLogSafe(file);
+  appendFileSync(file, `${JSON.stringify(safe)}\n`, { mode: 0o600 });
+  setPrivateFilePermissions(file);
   return safe;
 }
 
 export function readEvents(root: string, limit = 20): GuardEvent[] {
   const file = eventLogPath(root);
-  if (!existsSync(file)) return [];
+  if (!eventLogStat(file)) return [];
+  assertEventLogSafe(file);
   const safeLimit = Math.max(0, Math.floor(limit));
   if (safeLimit === 0) return [];
   return readTail(file, Math.max(64 * 1024, safeLimit * 4096))
@@ -55,5 +58,30 @@ function readTail(file: string, maxBytes: number): string {
     return firstNewline >= 0 ? text.slice(firstNewline + 1) : text;
   } finally {
     closeSync(fd);
+  }
+}
+
+function assertEventLogSafe(file: string): void {
+  const stat = eventLogStat(file);
+  if (!stat) return;
+  if (stat.isSymbolicLink()) throw new Error(`HoldTheGoblin event log must not be a symlink: ${file}`);
+  if (!stat.isFile()) throw new Error(`HoldTheGoblin event log path must be a file: ${file}`);
+}
+
+function eventLogStat(file: string): Stats | undefined {
+  try {
+    return lstatSync(file);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
+  }
+}
+
+function setPrivateFilePermissions(file: string): void {
+  if (process.platform === 'win32') return;
+  try {
+    chmodSync(file, 0o600);
+  } catch {
+    // Best-effort permission hardening; append/read behavior remains authoritative.
   }
 }

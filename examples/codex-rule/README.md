@@ -7,6 +7,7 @@ holdthegoblin verify
 npm exec -- holdthegoblin verify
 holdthegoblin checkpoint create --note "<task>"
 holdthegoblin handoff validate --schema <schema> --input <payload>
+holdthegoblin risk assess --command "<command>"
 ```
 
 This is soft guidance for Codex, not a hard sandbox. Use `holdthegoblin verify` in CI when you need enforcement outside an agent runtime.

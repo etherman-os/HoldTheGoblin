@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -14,7 +15,8 @@ import { listModelProviders } from './core/llm.js';
 import { exportObservability } from './core/observability.js';
 import { renderHtmlReport, renderMarkdownReport, renderTextSummary } from './core/output.js';
 import { readPackageVersion } from './core/package.js';
-import { isInsidePath, resolveInsideProject } from './core/paths.js';
+import { isInsidePath, resolveExistingInsideProject } from './core/paths.js';
+import { auditPolicyDecision, evaluateToolCallPreflight } from './core/preflight.js';
 import { generateTests } from './core/testgen.js';
 import { verify } from './core/verify.js';
 
@@ -48,8 +50,7 @@ export async function runMcpHttpServer(options: { host: string; port: number; al
   });
   app.use('/mcp', (req: any, res: any, next: any) => {
     if (!options.authToken) return next();
-    const expected = `Bearer ${options.authToken}`;
-    if (req.headers.authorization === expected) return next();
+    if (bearerTokenMatches(req.headers.authorization, options.authToken)) return next();
     return res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized.' }, id: null });
   });
   app.post('/mcp', async (req: any, res: any) => {
@@ -95,6 +96,13 @@ export async function runMcpHttpServer(options: { host: string; port: number; al
 
 function isLoopbackHost(host: string): boolean {
   return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+}
+
+function bearerTokenMatches(header: unknown, expectedToken: string): boolean {
+  if (typeof header !== 'string' || !header.startsWith('Bearer ')) return false;
+  const actual = Buffer.from(header.slice('Bearer '.length));
+  const expected = Buffer.from(expectedToken);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
 export function createMcpServer(options: McpServerOptions = {}): McpServer {
@@ -285,10 +293,52 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
     },
     async ({ root, schema, input }) => {
       const projectRoot = await resolveServerRoot(root);
-      const result = validateHandoffFiles(resolveInsideProject(projectRoot, schema), resolveInsideProject(projectRoot, input));
+      const result = validateHandoffFiles(resolveExistingInsideProject(projectRoot, schema), resolveExistingInsideProject(projectRoot, input));
       return {
         isError: !result.ok,
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      };
+    }
+  );
+
+  server.registerTool(
+    'risk_assess',
+    {
+      title: 'Assess HoldTheGoblin tool-call risk',
+      description: 'Evaluate a proposed shell command or tool path against HoldTheGoblin risk rules. This is advisory unless the host agent enforces the decision.',
+      inputSchema: {
+        ...rootSchema,
+        toolName: z.string().optional().describe('Tool name such as Bash, Read, Grep, Write, or LS. Defaults to Bash when command is set, otherwise Read.'),
+        command: z.string().optional().describe('Shell command to assess.'),
+        path: z.string().optional().describe('Path to assess for sensitive local credential exposure.'),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+      },
+    },
+    async ({ root, toolName, command, path }) => {
+      if (!command && !path) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: 'risk_assess requires command or path.' }],
+        };
+      }
+      const projectRoot = await resolveServerRoot(root);
+      const resolvedTool = toolName ?? (command ? 'Bash' : 'Read');
+      const preflight = evaluateToolCallPreflight({
+        host: 'mcp',
+        root: projectRoot,
+        cwd: projectRoot,
+        toolName: resolvedTool,
+        toolInput: command ? { command } : { path },
+      });
+      auditPolicyDecision(projectRoot, preflight);
+      const result = preflight.decision;
+      return {
+        isError: result.decision !== 'allow',
+        content: [{ type: 'text', text: JSON.stringify({ toolName: resolvedTool, decision: result.decision, reason: result.reason }, null, 2) }],
       };
     }
   );

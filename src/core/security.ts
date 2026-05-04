@@ -64,7 +64,7 @@ export async function runSecurityScans(root: string, config: HoldTheGoblinConfig
       continue;
     }
 
-    const result = await runShell(command, { cwd: root, timeoutMs: config.execution.timeoutMs, retries: 0 });
+    const result = await runShell(command, { cwd: root, timeoutMs: config.execution.timeoutMs, retries: 0, env: config.execution.env });
     if (result.stdoutTruncated) {
       skipped.push(`${command.label} output exceeded the in-memory limit and was truncated`);
       commandResults.push(summarizeScannerResult(result));

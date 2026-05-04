@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { findGitRoot } from './git.js';
 import { renderMarkdownReport } from './output.js';
-import { evaluateCommandRisk, evaluatePathReadRisk, hasMutationTool, isSensitivePath } from './risk.js';
+import { auditPolicyDecision, evaluateToolCallPreflight } from './preflight.js';
+import { hasMutationTool } from './risk.js';
 import type { HookInput } from './types.js';
 import { verify } from './verify.js';
 
@@ -11,35 +12,34 @@ export async function handleClaudeHook(stdin = readStdin()): Promise<{ stdout: s
   const event = input.hook_event_name;
   const root = await findGitRoot(input.cwd ?? process.cwd());
 
-  if (event === 'PreToolUse') return handlePreToolUse(input);
+  if (event === 'PreToolUse') return handlePreToolUse(input, root);
   if (event === 'PostToolBatch') return handlePostToolBatch(input, root);
   if (event === 'Stop') return handleStop(input, root);
 
   return { stdout: '', exitCode: 0 };
 }
 
-function handlePreToolUse(input: HookInput): { stdout: string; exitCode: number } {
-  if (input.tool_name === 'Bash') {
-    const command = String(input.tool_input?.command ?? '');
-    const risk = evaluateCommandRisk(command);
-    if (risk.decision !== 'allow') {
-      return {
-        exitCode: 0,
-        stdout: JSON.stringify({
-          hookSpecificOutput: {
-            hookEventName: 'PreToolUse',
-            permissionDecision: risk.decision,
-            permissionDecisionReason: `HoldTheGoblin: ${risk.reason}`,
-          },
-        }),
-      };
-    }
-  }
+function handlePreToolUse(input: HookInput, root: string): { stdout: string; exitCode: number } {
+  const preflight = evaluateToolCallPreflight({
+    host: 'claude-code',
+    root,
+    cwd: input.cwd,
+    toolName: input.tool_name,
+    toolInput: input.tool_input,
+  });
+  auditPolicyDecision(root, preflight);
 
-  const sensitivePath = sensitiveToolPath(input.tool_input);
-  if (sensitivePath && shouldBlockSensitiveTool(input.tool_name)) {
-    const risk = evaluatePathReadRisk(sensitivePath);
-    return denyPreTool(`HoldTheGoblin: ${risk.reason}`);
+  if (preflight.decision.decision !== 'allow') {
+    return {
+      exitCode: 0,
+      stdout: JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: preflight.decision.decision,
+          permissionDecisionReason: `HoldTheGoblin: ${preflight.decision.reason}`,
+        },
+      }),
+    };
   }
 
   return { stdout: '', exitCode: 0 };
@@ -56,25 +56,6 @@ function denyPreTool(reason: string): { stdout: string; exitCode: number } {
       },
     }),
   };
-}
-
-function shouldBlockSensitiveTool(toolName: string | undefined): boolean {
-  return toolName === 'Read' || toolName === 'Grep' || toolName === 'Glob' || toolName === 'LS' || hasMutationTool(toolName);
-}
-
-function sensitiveToolPath(input: Record<string, unknown> | undefined): string | undefined {
-  if (!input) return undefined;
-  const values = [
-    input.file_path,
-    input.path,
-    input.notebook_path,
-    input.pattern,
-    ...flattenStrings(input),
-  ];
-  for (const value of values) {
-    if (typeof value === 'string' && isSensitivePath(value)) return value;
-  }
-  return undefined;
 }
 
 async function handlePostToolBatch(input: HookInput, root: string): Promise<{ stdout: string; exitCode: number }> {
@@ -147,13 +128,6 @@ function parseHookInput(stdin: string): HookInput | undefined {
   } catch {
     return undefined;
   }
-}
-
-function flattenStrings(value: unknown): string[] {
-  if (typeof value === 'string') return [value];
-  if (Array.isArray(value)) return value.flatMap((item) => flattenStrings(item));
-  if (!value || typeof value !== 'object') return [];
-  return Object.values(value as Record<string, unknown>).flatMap((item) => flattenStrings(item));
 }
 
 function readStdin(): string {

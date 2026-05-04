@@ -29,10 +29,11 @@ export async function verify(options: VerifyOptions): Promise<VerifyResult> {
   const changedFiles = await getChangedFiles(options.root);
   const edgeCases = findEdgeCases(options.root, changedFiles);
   const testResults = includeTests
-    ? await runPlannedCommands(detections.testCommands, {
+      ? await runPlannedCommands(detections.testCommands, {
         cwd: options.root,
         timeoutMs: config.execution.timeoutMs,
         retries: config.execution.retries,
+        env: config.execution.env,
       })
     : [];
 

@@ -59,7 +59,7 @@ The demo uses the real `holdthegoblin hook claude` entrypoint, not a mocked deci
 
 | Layer | Behavior |
 | --- | --- |
-| Tool-call guard | Blocks destructive shell commands and sensitive file reads through Claude Code hooks. |
+| Tool-call guard | Blocks destructive shell commands, literal credential arguments, and sensitive file reads through Claude Code hooks. |
 | Test verifier | Detects JS/TS, Python, Go, Rust, and Java test/lint/typecheck commands. |
 | Security scanner | Runs built-in secret scan; uses Semgrep and Trivy when installed. |
 | CI hardening audit | Reports external GitHub Actions refs that are not pinned to full commit SHAs, with opt-in blocking policy. |
@@ -67,8 +67,8 @@ The demo uses the real `holdthegoblin hook claude` entrypoint, not a mocked deci
 | Handoff proof | Validates multi-agent JSON handoffs against a schema. |
 | Deploy guard | Runs verify, checkpoint, shadow/canary commands, health checks, rollback command, and checkpoint restore from a deploy plan. |
 | Rollback | Creates local file checkpoints and restores them on demand or during failed deploy phases. |
-| Observability | Writes evidence reports, JSONL event logs, and Langfuse/AgentOps-compatible export payloads under `.holdthegoblin/`. |
-| MCP | Exposes verifier, read-only config validation, checkpoint, handoff, deploy, test generation, and observability tools over stdio or Streamable HTTP. |
+| Observability | Writes evidence reports, redacted policy decision events, JSONL event logs, and Langfuse/AgentOps-compatible export payloads under `.holdthegoblin/`. |
+| MCP | Exposes verifier, read-only config validation, risk assessment, checkpoint, handoff, deploy, test generation, and observability tools over stdio or Streamable HTTP. |
 
 ## Commands
 
@@ -80,6 +80,8 @@ holdthegoblin verify [--format text|json|markdown|html] [--github-step-summary] 
 holdthegoblin hook claude
 holdthegoblin checkpoint create|list|rollback [--id latest] [--delete-new]
 holdthegoblin handoff validate --schema schema.json --input payload.json
+holdthegoblin risk assess --command "rm -rf /" [--format json]
+holdthegoblin risk assess --tool Read --path .env [--format json]
 holdthegoblin config validate [--path .holdthegoblin/config.json] [--format json]
 holdthegoblin config schema
 holdthegoblin events [--limit 20] [--format text|json]
@@ -108,7 +110,7 @@ holdthegoblin demo
 
 Hard blocking is available for:
 
-- `PreToolUse`: dangerous Bash commands and sensitive reads.
+- `PreToolUse`: dangerous Bash commands, literal credential arguments, and sensitive reads.
 - `PostToolBatch`: quick security verification after file mutations.
 - `Stop`: full verification before Claude finishes.
 
@@ -128,11 +130,17 @@ Cursor project rules live in `.cursor/rules`: https://docs.cursor.com/en/context
 
 This is project guidance for Codex: run `holdthegoblin verify`, use checkpoints before risky changes, avoid credential reads, and cite `.holdthegoblin/latest.md` as evidence. It is not a hard runtime sandbox.
 
+Agents without hard hook support can run `holdthegoblin risk assess` before risky tool calls. This is advisory preflight output; enforcement still depends on the host agent, CLI exit code handling, or CI.
+
+Every Claude `PreToolUse` decision is also written as a redacted `holdthegoblin.policy_event.v1` / `holdthegoblin.policy_decision.v1` audit event under `.holdthegoblin/events.jsonl`.
+
 ### Warp
 
 `holdthegoblin wrap --agent warp .` writes `AGENTS.md`, `WARP.md`, `.agents/skills/holdthegoblin/SKILL.md`, and `.warp/skills/holdthegoblin/SKILL.md`.
 
 Warp uses project rules from `AGENTS.md` by default and supports `WARP.md` for compatibility: https://docs.warp.dev/agent-platform/capabilities/rules
+
+Because Warp project rules are advisory, the generated rules steer agents to use `holdthegoblin risk assess` for command/path preflight checks and `holdthegoblin verify` for completion evidence.
 
 ### Generic Agents And Frameworks
 
@@ -205,10 +213,12 @@ Use `argv` arrays for new deploy plans so commands run without a shell:
 
 ```json
 {
-  "shadow": { "argv": ["npm", "run", "deploy:shadow"] },
+  "shadow": { "argv": ["npm", "run", "deploy:shadow"], "env": ["DEPLOY_TOKEN"] },
   "shadowHealth": { "argv": ["npm", "run", "health:shadow"] }
 }
 ```
+
+Spawned commands inherit only a small safe environment by default. Use `.holdthegoblin/config.json` `execution.env` for verification/scanner commands and deploy command `env` lists for deploy phases that need reviewed environment variable names from the current process; never put secret values in config or plans.
 
 Disabling deploy verification, checkpoint creation, checkpoint rollback, or required health gates is blocked unless the reviewed plan sets `allowPolicyDowngrade: true` and the run also passes `--allow-dangerous`.
 

@@ -22,6 +22,12 @@ HoldTheGoblin is a local-first verifier with these integration surfaces:
 10. When `--github-step-summary` is passed inside GitHub Actions, append a concise redacted Markdown summary to `GITHUB_STEP_SUMMARY`.
 11. When `--github-annotations` is passed inside GitHub Actions, emit escaped workflow command annotations for failed checks, failed commands, warnings/skips, and scanner findings.
 
+## Policy Preflight Flow
+
+Claude Code `PreToolUse` hooks are normalized into `holdthegoblin.policy_event.v1` records before risk evaluation. The shared policy preflight core evaluates shell commands, file reads/writes, and generic tool calls into `allow`, `ask`, or `deny` decisions, then writes a redacted `holdthegoblin.policy_decision.v1` audit event.
+
+Credential-looking command arguments are treated as policy input, not log text. Split flags, inline flags, quoted shell fragments, generic authorization headers, URL credentials, and percent-encoded credential fragments are rejected or redacted before evidence is persisted. Pure environment references such as `$TOKEN`, `${TOKEN}`, and `Authorization: Bearer $TOKEN` remain allowed.
+
 ## Deploy Flow
 
 `holdthegoblin deploy run --plan <file>` reads a versioned deploy plan, validates policy downgrade controls, runs verification, creates a checkpoint, executes shadow/canary/promote commands, and runs rollback command plus checkpoint restore on failure.
@@ -29,6 +35,8 @@ HoldTheGoblin is a local-first verifier with these integration surfaces:
 The deploy guard is command-runner based. It deliberately does not embed cloud-provider credentials or assume a specific platform.
 
 Deploy commands can use `argv` arrays to run without a shell. Legacy `command` strings are still accepted for compatibility, but shell/interpreter wrappers are treated as human-review risk. Hard-deny risk rules are blocked even if a plan sets `allowDangerous`. Human-approval `ask` rules require `allowDangerous: true` in the reviewed plan plus the explicit run flag `--allow-dangerous`.
+
+Spawned commands receive a minimal environment by default instead of the full parent process environment. Project config can set `execution.env` for verification and scanner commands. Deploy command specs can set `env` to add per-phase variable names. HoldTheGoblin records allowed and blocked environment key names in command results, but never records environment values.
 
 Deploy plans cannot silently disable verification, checkpoint creation, checkpoint rollback, or promotion health gates. Those policy downgrades require both `allowPolicyDowngrade: true` in the reviewed plan and `--allow-dangerous` at runtime.
 
