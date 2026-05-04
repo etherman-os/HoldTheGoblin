@@ -1,4 +1,5 @@
 import { performance } from 'node:perf_hooks';
+import { auditWorkflowActionRefs } from './actions.js';
 import { loadConfig } from './config.js';
 import { detectProject } from './detect.js';
 import { findEdgeCases } from './edgecases.js';
@@ -50,6 +51,7 @@ export async function verify(options: VerifyOptions): Promise<VerifyResult> {
     edgeCases,
     { enforcePolicyFloor: options.enforcePolicyFloor === true }
   );
+  checks.push(...auditWorkflowActionRefs(options.root));
   const finishedAt = new Date().toISOString();
   const result: VerifyResult = {
     ok: isOk(checks),

@@ -62,6 +62,7 @@ The demo uses the real `holdthegoblin hook claude` entrypoint, not a mocked deci
 | Tool-call guard | Blocks destructive shell commands and sensitive file reads through Claude Code hooks. |
 | Test verifier | Detects JS/TS, Python, Go, Rust, and Java test/lint/typecheck commands. |
 | Security scanner | Runs built-in secret scan; uses Semgrep and Trivy when installed. |
+| CI hardening audit | Reports external GitHub Actions refs that are not pinned to full commit SHAs. |
 | Test generation | Flags risky code paths and writes deterministic or LLM-assisted test plans through local/cloud providers. |
 | Handoff proof | Validates multi-agent JSON handoffs against a schema. |
 | Deploy guard | Runs verify, checkpoint, shadow/canary commands, health checks, rollback command, and checkpoint restore from a deploy plan. |

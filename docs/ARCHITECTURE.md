@@ -17,9 +17,10 @@ HoldTheGoblin is a local-first verifier with these integration surfaces:
 5. Run tests and optional Semgrep/Trivy scans.
 6. Run the built-in secret scanner.
 7. Evaluate policy according to `relaxed`, `balanced`, or `strict` mode.
-8. Write `.holdthegoblin/latest.md`, `.holdthegoblin/latest.html`, immutable run JSON/Markdown/HTML, and event logs.
-9. When `--github-step-summary` is passed inside GitHub Actions, append a concise redacted Markdown summary to `GITHUB_STEP_SUMMARY`.
-10. When `--github-annotations` is passed inside GitHub Actions, emit escaped workflow command annotations for failed checks, failed commands, warnings/skips, and scanner findings.
+8. Run report-only GitHub Actions ref pinning audit when workflow files exist.
+9. Write `.holdthegoblin/latest.md`, `.holdthegoblin/latest.html`, immutable run JSON/Markdown/HTML, and event logs.
+10. When `--github-step-summary` is passed inside GitHub Actions, append a concise redacted Markdown summary to `GITHUB_STEP_SUMMARY`.
+11. When `--github-annotations` is passed inside GitHub Actions, emit escaped workflow command annotations for failed checks, failed commands, warnings/skips, and scanner findings.
 
 ## Deploy Flow
 
@@ -44,6 +45,8 @@ Claude Code hooks are the hard tool-call enforcement path in V0. Other agent int
 CI or another external gate should run `holdthegoblin verify` when a hard merge/deploy boundary is required.
 
 GitHub Actions summaries and annotations are report-only. They do not alter policy evaluation, hook decisions, or process exit codes.
+
+The GitHub Actions ref pinning audit is also report-only. It surfaces mutable `uses:` refs so maintainers can decide which workflow actions should be commit-pinned.
 
 ## Local State
 
