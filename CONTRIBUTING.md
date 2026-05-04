@@ -33,4 +33,4 @@ npm run release:check
 2. Confirm `README.md`, `CHANGELOG.md`, and examples match the shipped behavior.
 3. Confirm the installed-package smoke test and package dry-run include `dist/src`, `examples`, `README.md`, and `LICENSE`.
 4. Confirm `PRIVACY.md` and `docs/CONFIG.md` still match data egress and config behavior.
-5. Publish only from a clean working tree and a signed tag named `v<package.json version>`. The GitHub publish workflow verifies the tag, fails closed if `NPM_TOKEN` is missing, and uses npm provenance.
+5. Publish only from a clean working tree and an annotated tag named `v<package.json version>`. Pushing the tag runs release checks and creates or updates the GitHub Release. npm publishing stays disabled unless repository variable `NPM_PUBLISH_ENABLED=true` and secret `NPM_TOKEN` are configured.

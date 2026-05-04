@@ -11,7 +11,7 @@
 - Added local HTML evidence reports alongside Markdown and JSON verification reports.
 - Added GitHub Actions step summaries and escaped workflow annotations for concise CI evidence with artifact upload guidance.
 - Added GitHub Actions ref pinning audit with opt-in blocking policy and allowlists for mutable external workflow action refs.
-- Added installed-package smoke testing, package content allow/deny checks, sourcemap omission, MCP version derivation from package metadata, and fail-closed npm publish token handling.
+- Added installed-package smoke testing, package content allow/deny checks, sourcemap omission, MCP version derivation from package metadata, and token-gated npm provenance publishing.
 - Restricted observability exports to immutable `.holdthegoblin/runs` verification reports and added immutable report paths to verification evidence.
 
 ## 0.1.2
