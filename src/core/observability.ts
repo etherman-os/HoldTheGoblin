@@ -27,6 +27,7 @@ interface SafeVerifySummary {
   reportPath?: string;
   markdownReportPath?: string;
   jsonReportPath?: string;
+  htmlReportPath?: string;
   changedFiles: string[];
   detections: unknown;
   checks: Array<Record<string, unknown>>;
@@ -231,6 +232,7 @@ function summarizeResult(result: VerifyResult): SafeVerifySummary {
     reportPath: result.reportPath,
     markdownReportPath: result.markdownReportPath,
     jsonReportPath: result.jsonReportPath,
+    htmlReportPath: result.htmlReportPath,
     changedFiles: result.changedFiles,
     detections: {
       kinds: result.detections.kinds,

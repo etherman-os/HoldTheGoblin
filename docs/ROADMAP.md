@@ -16,11 +16,13 @@ HoldTheGoblin is a safety tool, so roadmap items need measurable enforcement or 
   Acceptance: `.holdthegoblin/config.json` has a documented JSON schema and `config validate` reports precise errors.
 - First-class downstream GitHub Action template.
   Acceptance: users can add a copy-paste workflow that runs `holdthegoblin verify` on pull requests.
+- HTML evidence report.
+  Acceptance: local report renders checks, findings, edge-case suggestions, and command summaries, redacts known secret patterns before rendering, and escapes report values.
 
 ## Next
 
-- HTML evidence report.
-  Acceptance: local report renders checks, findings, edge-case suggestions, and command summaries without exposing raw secrets.
+- CI annotation summary.
+  Acceptance: GitHub Actions can publish a concise Markdown step summary that points to the local evidence artifact.
 
 ## Later
 

@@ -239,6 +239,7 @@ function ensureGitignore(root: string): void {
     '.holdthegoblin/checkpoints/',
     '.holdthegoblin/tmp/',
     '.holdthegoblin/latest.md',
+    '.holdthegoblin/latest.html',
     '.holdthegoblin/events.jsonl',
     '.holdthegoblin/exports/',
     '.holdthegoblin/deploy-latest.json',

@@ -7,6 +7,7 @@
 - Added configuration policy-floor findings so weakened test, secret, Semgrep, or Trivy policies are explicit and blocking in strict/release verification.
 - Added documented config schema validation, `config validate`, `config schema`, and MCP `config_validate`.
 - Added downstream GitHub Actions verification workflow template.
+- Added local HTML evidence reports alongside Markdown and JSON verification reports.
 - Added installed-package smoke testing, package content allow/deny checks, sourcemap omission, MCP version derivation from package metadata, and fail-closed npm publish token handling.
 - Restricted observability exports to immutable `.holdthegoblin/runs` verification reports and added immutable report paths to verification evidence.
 

@@ -33,7 +33,7 @@ try {
 
   for (const file of files) {
     assert.equal(file.includes('/dist/test/'), false, `Packed tarball includes tests: ${file}`);
-    assert.equal(file.includes('/.holdthegoblin/'), false, `Packed tarball includes local run evidence: ${file}`);
+    assert.equal(isRuntimeEvidenceFile(file), false, `Packed tarball includes local run evidence: ${file}`);
     assert.equal(file.endsWith('.js.map'), false, `Packed tarball includes sourcemap without sources: ${file}`);
     assert.equal(isSensitiveFileName(file), false, `Packed tarball includes credential-like file path: ${file}`);
   }
@@ -71,4 +71,8 @@ function run(command, args, options) {
 
 function isSensitiveFileName(file) {
   return /(^|\/)(?:\.env(?:$|[\w.-]*)|\.npmrc|\.pypirc|\.netrc|id_(?:rsa|dsa|ecdsa|ed25519)(?:_sk)?|[^/]+\.(?:pem|key|p12|pfx|jks|keystore))$/.test(file);
+}
+
+function isRuntimeEvidenceFile(file) {
+  return file === '.holdthegoblin' || file.startsWith('.holdthegoblin/') || file.includes('/.holdthegoblin/');
 }

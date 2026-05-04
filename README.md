@@ -75,7 +75,7 @@ The demo uses the real `holdthegoblin hook claude` entrypoint, not a mocked deci
 holdthegoblin --version
 holdthegoblin wrap --agent claude-code|cursor|codex|warp|all [path]
 holdthegoblin init --agent claude-code|cursor|codex|warp|all [--mode relaxed|balanced|strict]
-holdthegoblin verify [--format text|json|markdown]
+holdthegoblin verify [--format text|json|markdown|html]
 holdthegoblin hook claude
 holdthegoblin checkpoint create|list|rollback [--id latest] [--delete-new]
 holdthegoblin handoff validate --schema schema.json --input payload.json
@@ -92,6 +92,8 @@ holdthegoblin tests generate [--provider deterministic|ollama|ollama-cloud|opena
 holdthegoblin models providers [--format json]
 holdthegoblin demo
 ```
+
+`verify --format` changes stdout only. Verification reports are still written under `.holdthegoblin/`.
 
 ## Agent Integrations
 
@@ -254,14 +256,18 @@ Available tools:
 - `tests_generate`: write deterministic or LLM-assisted test plans.
 - `models_providers`: list supported model providers and environment variables.
 
+The `verify` MCP tool accepts `format: "html"` and returns HTML as text content. Verification also writes `.holdthegoblin/latest.html` and `.holdthegoblin/runs/<run-id>.html`; JSON responses include `htmlReportPath`.
+
 ## Evidence Reports
 
 Each verification writes:
 
 ```text
 .holdthegoblin/latest.md
+.holdthegoblin/latest.html
 .holdthegoblin/runs/<run-id>.json
 .holdthegoblin/runs/<run-id>.md
+.holdthegoblin/runs/<run-id>.html
 .holdthegoblin/events.jsonl
 ```
 

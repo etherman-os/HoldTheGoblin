@@ -12,7 +12,7 @@ import { validateHandoffFiles } from './core/handoff.js';
 import { CONFIG_JSON_SCHEMA, loadConfig, validateProjectConfig } from './core/config.js';
 import { listModelProviders } from './core/llm.js';
 import { exportObservability } from './core/observability.js';
-import { renderMarkdownReport, renderTextSummary } from './core/output.js';
+import { renderHtmlReport, renderMarkdownReport, renderTextSummary } from './core/output.js';
 import { readPackageVersion } from './core/package.js';
 import { isInsidePath, resolveInsideProject } from './core/paths.js';
 import { generateTests } from './core/testgen.js';
@@ -141,7 +141,7 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
       description: 'Run tests, security checks, edge-case detection, and evidence report generation for a project.',
       inputSchema: {
         ...rootSchema,
-        format: z.enum(['text', 'json', 'markdown']).optional().describe('Response format. Defaults to text.'),
+        format: z.enum(['text', 'json', 'markdown', 'html']).optional().describe('Response format. Defaults to text. HTML is returned as text content; reports are still written under .holdthegoblin/.'),
       },
       annotations: {
         readOnlyHint: false,
@@ -156,7 +156,9 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
         ? JSON.stringify(result, null, 2)
         : format === 'markdown'
           ? renderMarkdownReport(result)
-          : renderTextSummary(result);
+          : format === 'html'
+            ? renderHtmlReport(result)
+            : renderTextSummary(result);
       return {
         isError: !result.ok,
         content: [{ type: 'text', text }],

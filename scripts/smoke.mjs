@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
 import net from 'node:net';
@@ -164,7 +164,14 @@ try {
   ]) {
     if (!existsSync(path.join(temp, rel))) throw new Error(`Missing wrapped asset: ${rel}`);
   }
+  const gitignore = readFileSync(path.join(temp, '.gitignore'), 'utf8');
+  if (!gitignore.includes('.holdthegoblin/latest.html')) throw new Error('Wrapped project .gitignore does not ignore latest.html.');
   run(['verify', '--format', 'json'], { cwd: temp });
+  const latestHtml = path.join(temp, '.holdthegoblin', 'latest.html');
+  if (!existsSync(latestHtml)) throw new Error('Verification did not write latest.html.');
+  const htmlOutput = run(['verify', '--format', 'html'], { cwd: temp });
+  if (!htmlOutput.startsWith('<!doctype html>')) throw new Error('verify --format html did not emit an HTML document.');
+  if (!readFileSync(latestHtml, 'utf8').includes('<meta http-equiv="Content-Security-Policy"')) throw new Error('HTML report is missing CSP.');
   run(['events', '--format', 'json'], { cwd: temp });
   run(['tests', 'generate', '--output', path.join(temp, 'generated-tests.md')], { cwd: temp });
   run(['models', 'providers'], { cwd: temp });

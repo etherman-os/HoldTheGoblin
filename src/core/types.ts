@@ -109,6 +109,7 @@ export interface VerifyResult {
   reportPath?: string;
   markdownReportPath?: string;
   jsonReportPath?: string;
+  htmlReportPath?: string;
 }
 
 export interface GuardEvent {

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -52,10 +52,16 @@ test('redacts event payloads before writing event logs', () => {
 
 test('redacts command output before evidence is returned', async () => {
   const token = 'sk-' + '1234567890abcdefghijklmnopqrstuvwxyzABCDE'; // holdthegoblin: allow-secret
+  const encryptedKey = [
+    '-----BEGIN ENCRYPTED PRIVATE KEY-----',
+    'MIIEvQIBADANBgkqhkiG9w0BAQEFAASC',
+    '-----END ENCRYPTED PRIVATE KEY-----',
+  ].join('\n'); // holdthegoblin: allow-secret
+  const payload = `${token}\n${encryptedKey}`;
   const result = await runShell({
     id: 'redact:test',
     label: 'Redaction test',
-    command: `node -e "console.log('${token}')"`,
+    command: `node -e ${JSON.stringify(`console.log(${JSON.stringify(payload)})`)}`,
     kind: 'doctor',
     required: false,
     reason: 'test',
@@ -64,7 +70,9 @@ test('redacts command output before evidence is returned', async () => {
   assert.equal(result.exitCode, 0);
   assert.doesNotMatch(result.command, /abcdefghijklmnopqrstuvwxyz/);
   assert.doesNotMatch(result.stdout, /abcdefghijklmnopqrstuvwxyz/);
+  assert.doesNotMatch(result.stdout, /ENCRYPTED PRIVATE KEY/);
   assert.match(result.stdout, /sk-\[redacted\]/);
+  assert.match(result.stdout, /\[redacted private key\]/);
 });
 
 test('timed out commands terminate child processes', async () => {
@@ -88,11 +96,16 @@ test('timed out commands terminate child processes', async () => {
 test('redacts verification reports before writing evidence files', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'htg-redact-report-'));
   const token = 'sk-' + '1234567890abcdefghijklmnopqrstuvwxyzABCDE'; // holdthegoblin: allow-secret
+  const encryptedKey = [
+    '-----BEGIN ENCRYPTED PRIVATE KEY-----',
+    'MIIEvQIBADANBgkqhkiG9w0BAQEFAASC',
+    '-----END ENCRYPTED PRIVATE KEY-----',
+  ].join('\n'); // holdthegoblin: allow-secret
   const result: VerifyResult = {
     ok: false,
     mode: 'balanced',
     root,
-    runId: 'redact-run',
+    runId: '20260101000000-abc123',
     startedAt: '2026-01-01T00:00:00.000Z',
     finishedAt: '2026-01-01T00:00:01.000Z',
     durationMs: 1000,
@@ -110,18 +123,117 @@ test('redacts verification reports before writing evidence files', () => {
       command: `echo ${token}`,
       skipped: false,
       exitCode: 1,
-      stdout: token,
-      stderr: '',
+      stdout: `${token}\n${encryptedKey}`,
+      stderr: encryptedKey,
       durationMs: 1,
       timedOut: false,
       attempts: 1,
     }],
-    checks: [{ id: 'x', label: 'X', status: 'fail', severity: 'high', message: `failed ${token}` }],
-    findings: [],
-    edgeCases: [],
+    checks: [{ id: 'x', label: '<script>alert(1)</script>', status: 'fail', severity: 'high', message: `failed ${token}\n${encryptedKey}` }],
+    findings: [{ scanner: 'secret', severity: 'HIGH', message: `secret ${token}\n${encryptedKey}`, file: 'src/<bad>.ts', line: 7, ruleId: '<rule>' }],
+    edgeCases: [{ file: 'src/app.ts', line: 3, category: 'auth', message: 'auth branch', suggestedTest: '<img src=x onerror=alert(1)>' }],
   };
 
   const written = writeReports(root, result);
   assert.doesNotMatch(JSON.stringify(written), /abcdefghijklmnopqrstuvwxyz/);
+  assert.doesNotMatch(JSON.stringify(written), /ENCRYPTED PRIVATE KEY/);
   assert.doesNotMatch(readFileSync(written.reportPath!, 'utf8'), /abcdefghijklmnopqrstuvwxyz/);
+  assert.ok(written.htmlReportPath);
+  assert.equal(existsSync(written.htmlReportPath), true);
+  assert.equal(existsSync(path.join(root, '.holdthegoblin', 'latest.html')), true);
+  const html = readFileSync(written.htmlReportPath, 'utf8');
+  assert.doesNotMatch(html, /abcdefghijklmnopqrstuvwxyz/);
+  assert.doesNotMatch(html, /ENCRYPTED PRIVATE KEY/);
+  assert.doesNotMatch(html, /<script>alert/);
+  assert.doesNotMatch(html, /<img src=x/);
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+});
+
+test('report writer rejects unsafe run ids', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-report-runid-'));
+  const result: VerifyResult = {
+    ok: true,
+    mode: 'balanced',
+    root,
+    runId: '../escape',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    finishedAt: '2026-01-01T00:00:01.000Z',
+    durationMs: 1000,
+    changedFiles: [],
+    detections: { root, kinds: ['javascript'], testCommands: [], securityCommands: [], warnings: [] },
+    commandResults: [],
+    checks: [],
+    findings: [],
+    edgeCases: [],
+  };
+
+  assert.throws(() => writeReports(root, result), /Invalid verification run id/);
+});
+
+test('report writer rejects symlinked runtime directories before creating reports outside root', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-report-symlink-root-'));
+  const outside = mkdtempSync(path.join(tmpdir(), 'htg-report-symlink-outside-'));
+  try {
+    symlinkSync(outside, path.join(root, '.holdthegoblin'), 'dir');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EPERM' || (error as NodeJS.ErrnoException).code === 'EINVAL') {
+      t.skip('directory symlinks are not available in this environment');
+      return;
+    }
+    throw error;
+  }
+
+  const result: VerifyResult = {
+    ok: true,
+    mode: 'balanced',
+    root,
+    runId: '20260101000000-abc123',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    finishedAt: '2026-01-01T00:00:01.000Z',
+    durationMs: 1000,
+    changedFiles: [],
+    detections: { root, kinds: ['javascript'], testCommands: [], securityCommands: [], warnings: [] },
+    commandResults: [],
+    checks: [],
+    findings: [],
+    edgeCases: [],
+  };
+
+  assert.throws(() => writeReports(root, result), /runtime directory must not be a symlink/);
+  assert.equal(existsSync(path.join(outside, 'runs')), false);
+});
+
+test('report writer rejects symlinked runs directory before creating reports outside root', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-report-runs-symlink-root-'));
+  const outside = mkdtempSync(path.join(tmpdir(), 'htg-report-runs-symlink-outside-'));
+  mkdirSync(path.join(root, '.holdthegoblin'));
+  try {
+    symlinkSync(outside, path.join(root, '.holdthegoblin', 'runs'), 'dir');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EPERM' || (error as NodeJS.ErrnoException).code === 'EINVAL') {
+      t.skip('directory symlinks are not available in this environment');
+      return;
+    }
+    throw error;
+  }
+
+  const result: VerifyResult = {
+    ok: true,
+    mode: 'balanced',
+    root,
+    runId: '20260101000000-abc123',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    finishedAt: '2026-01-01T00:00:01.000Z',
+    durationMs: 1000,
+    changedFiles: [],
+    detections: { root, kinds: ['javascript'], testCommands: [], securityCommands: [], warnings: [] },
+    commandResults: [],
+    checks: [],
+    findings: [],
+    edgeCases: [],
+  };
+
+  assert.throws(() => writeReports(root, result), /runtime directory must not be a symlink/);
+  assert.equal(existsSync(path.join(outside, `${result.runId}.json`)), false);
 });

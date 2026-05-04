@@ -111,13 +111,16 @@ async function cmdWrap(args: ParsedArgs): Promise<number> {
 
 async function cmdVerify(args: ParsedArgs, root: string): Promise<number> {
   const format = stringFlag(args, 'format') ?? 'text';
-  if (!['text', 'json', 'markdown'].includes(format)) throw new Error('verify --format must be text, json, or markdown.');
+  if (!['text', 'json', 'markdown', 'html'].includes(format)) throw new Error('verify --format must be text, json, markdown, or html.');
   const result = await verify({ root });
   if (format === 'json') {
     console.log(JSON.stringify(result, null, 2));
   } else if (format === 'markdown') {
     const { renderMarkdownReport } = await import('./core/output.js');
     console.log(renderMarkdownReport(result));
+  } else if (format === 'html') {
+    const { renderHtmlReport } = await import('./core/output.js');
+    console.log(renderHtmlReport(result));
   } else {
     console.log(renderTextSummary(result));
   }
@@ -486,7 +489,7 @@ Usage:
   holdthegoblin --version
   holdthegoblin init --agent claude-code|cursor|codex|warp|all [--mode relaxed|balanced|strict]
   holdthegoblin wrap --agent claude-code|cursor|codex|warp|all [path]
-  holdthegoblin verify [--format text|json|markdown]
+  holdthegoblin verify [--format text|json|markdown|html]
   holdthegoblin hook claude
   holdthegoblin checkpoint create|list|rollback [--id latest] [--delete-new]
   holdthegoblin handoff validate --schema schema.json --input payload.json
@@ -502,6 +505,10 @@ Usage:
   holdthegoblin tests generate [--provider ${providerHelpList()}] [--model model] [--base-url url] [--timeout-ms 60000]
   holdthegoblin models providers [--format json]
   holdthegoblin demo
+
+Notes:
+  verify writes .holdthegoblin/latest.md, .holdthegoblin/latest.html, and immutable .holdthegoblin/runs/<run-id> reports.
+  verify --format selects stdout format only.
 `);
 }
 

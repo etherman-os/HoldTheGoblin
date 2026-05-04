@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { isInsidePath, relativePosix } from './paths.js';
@@ -151,10 +151,10 @@ export function appPath(root: string, ...parts: string[]): string {
 }
 
 export function ensureAppDirs(root: string): void {
-  mkdirSync(appPath(root), { recursive: true });
-  mkdirSync(appPath(root, 'runs'), { recursive: true });
-  mkdirSync(appPath(root, 'checkpoints'), { recursive: true });
-  mkdirSync(appPath(root, 'tmp'), { recursive: true });
+  ensureRuntimeDir(root, appPath(root));
+  ensureRuntimeDir(root, appPath(root, 'runs'));
+  ensureRuntimeDir(root, appPath(root, 'checkpoints'));
+  ensureRuntimeDir(root, appPath(root, 'tmp'));
 }
 
 export function configPath(root: string): string {
@@ -254,6 +254,21 @@ function rejectSensitiveConfigPath(file: string, root?: string): void {
     const risk = evaluatePathReadRisk(candidate);
     if (risk.decision === 'deny') throw new Error(risk.reason);
   }
+}
+
+function ensureRuntimeDir(root: string, dir: string): void {
+  const realRoot = realpathSync(root);
+  if (existsSync(dir)) assertRuntimeDirSafe(realRoot, dir);
+  mkdirSync(dir, { recursive: true });
+  assertRuntimeDirSafe(realRoot, dir);
+}
+
+function assertRuntimeDirSafe(realRoot: string, dir: string): void {
+  const stat = lstatSync(dir);
+  if (stat.isSymbolicLink()) throw new Error(`HoldTheGoblin runtime directory must not be a symlink: ${dir}`);
+  if (!stat.isDirectory()) throw new Error(`HoldTheGoblin runtime path must be a directory: ${dir}`);
+  const realDir = realpathSync(dir);
+  if (!isInsidePath(realRoot, realDir)) throw new Error(`HoldTheGoblin runtime directory resolves outside project root: ${dir}`);
 }
 
 const KNOWN_CONFIG_PATH_SEGMENTS = new Set([

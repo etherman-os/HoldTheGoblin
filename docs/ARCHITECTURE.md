@@ -17,7 +17,7 @@ HoldTheGoblin is a local-first verifier with these integration surfaces:
 5. Run tests and optional Semgrep/Trivy scans.
 6. Run the built-in secret scanner.
 7. Evaluate policy according to `relaxed`, `balanced`, or `strict` mode.
-8. Write `.holdthegoblin/latest.md`, immutable run JSON/Markdown, and event logs.
+8. Write `.holdthegoblin/latest.md`, `.holdthegoblin/latest.html`, immutable run JSON/Markdown/HTML, and event logs.
 
 ## Deploy Flow
 
@@ -47,8 +47,10 @@ HoldTheGoblin writes runtime state under `.holdthegoblin/`:
 
 - `config.json`
 - `latest.md`
+- `latest.html`
 - `runs/*.json`
 - `runs/*.md`
+- `runs/*.html`
 - `events.jsonl`
 - `checkpoints/*`
 - `exports/*.json`
