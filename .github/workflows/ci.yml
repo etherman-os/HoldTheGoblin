@@ -26,5 +26,5 @@ jobs:
       - run: npm test
       - run: npm run smoke
       - run: npm run demo:db-delete
-      - run: npm run verify:self
+      - run: npm run verify:self -- --github-step-summary
       - run: npm pack --dry-run

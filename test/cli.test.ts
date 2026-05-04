@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -62,4 +62,22 @@ test('config validate reports invalid config through CLI', () => {
       return true;
     }
   );
+});
+
+test('verify can append a GitHub Actions step summary', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-cli-gh-summary-'));
+  const summaryPath = path.join(root, 'step-summary.md');
+  const env = {
+    ...process.env,
+    GITHUB_ACTIONS: 'true',
+    GITHUB_STEP_SUMMARY: summaryPath,
+  };
+
+  const output = execFileSync(process.execPath, [cli, 'verify', '--format', 'text', '--github-step-summary'], { cwd: root, env, encoding: 'utf8' });
+  assert.match(output, /HoldTheGoblin PASS/);
+  assert.equal(existsSync(summaryPath), true);
+  const summary = readFileSync(summaryPath, 'utf8');
+  assert.match(summary, /HoldTheGoblin Verification PASS/);
+  assert.match(summary, /\.holdthegoblin\/latest\.md/);
+  assert.doesNotMatch(summary, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });

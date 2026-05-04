@@ -75,7 +75,7 @@ The demo uses the real `holdthegoblin hook claude` entrypoint, not a mocked deci
 holdthegoblin --version
 holdthegoblin wrap --agent claude-code|cursor|codex|warp|all [path]
 holdthegoblin init --agent claude-code|cursor|codex|warp|all [--mode relaxed|balanced|strict]
-holdthegoblin verify [--format text|json|markdown|html]
+holdthegoblin verify [--format text|json|markdown|html] [--github-step-summary]
 holdthegoblin hook claude
 holdthegoblin checkpoint create|list|rollback [--id latest] [--delete-new]
 holdthegoblin handoff validate --schema schema.json --input payload.json
@@ -94,6 +94,8 @@ holdthegoblin demo
 ```
 
 `verify --format` changes stdout only. Verification reports are still written under `.holdthegoblin/`.
+
+`verify --github-step-summary` appends a concise Markdown job summary to the GitHub Actions `GITHUB_STEP_SUMMARY` file. This is report-only output; the CI gate still passes or fails from the `verify` exit code.
 
 ## Agent Integrations
 
@@ -147,7 +149,7 @@ The TypeScript SDK is exported from `holdthegoblin`. It includes dependency-ligh
 
 Copy `examples/github-action/holdthegoblin-verify.yml` into `.github/workflows/holdthegoblin.yml` in a downstream repository to run HoldTheGoblin on pull requests.
 
-The workflow validates config first, then runs `holdthegoblin verify`. It is a CI gate, not an agent sandbox: failures are enforced by the pull request check result.
+The workflow validates config first, then runs `holdthegoblin verify`, publishes a concise GitHub Actions job summary, and uploads local evidence reports as an artifact. It is a CI gate, not an agent sandbox: failures are enforced by the pull request check result.
 
 ## Test Generation
 
@@ -270,6 +272,8 @@ Each verification writes:
 .holdthegoblin/runs/<run-id>.html
 .holdthegoblin/events.jsonl
 ```
+
+In GitHub Actions, pass `--github-step-summary` to add a short Markdown summary to the workflow run page. The summary contains counts, failed checks, warnings/skips, findings, and root-relative evidence paths; it does not include raw command stdout or stderr.
 
 Other commands may also write:
 

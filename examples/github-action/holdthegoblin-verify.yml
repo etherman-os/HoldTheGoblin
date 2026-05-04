@@ -28,4 +28,17 @@ jobs:
         run: npm exec --yes --package=holdthegoblin@latest -- holdthegoblin config validate --format json
 
       - name: Verify with HoldTheGoblin
-        run: npm exec --yes --package=holdthegoblin@latest -- holdthegoblin verify --format markdown
+        run: npm exec --yes --package=holdthegoblin@latest -- holdthegoblin verify --format markdown --github-step-summary
+
+      - name: Upload HoldTheGoblin evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: holdthegoblin-evidence
+          if-no-files-found: ignore
+          path: |
+            .holdthegoblin/latest.md
+            .holdthegoblin/latest.html
+            .holdthegoblin/runs/*.json
+            .holdthegoblin/runs/*.md
+            .holdthegoblin/runs/*.html

@@ -18,6 +18,7 @@ HoldTheGoblin is a local-first verifier with these integration surfaces:
 6. Run the built-in secret scanner.
 7. Evaluate policy according to `relaxed`, `balanced`, or `strict` mode.
 8. Write `.holdthegoblin/latest.md`, `.holdthegoblin/latest.html`, immutable run JSON/Markdown/HTML, and event logs.
+9. When `--github-step-summary` is passed inside GitHub Actions, append a concise redacted Markdown summary to `GITHUB_STEP_SUMMARY`.
 
 ## Deploy Flow
 
@@ -40,6 +41,8 @@ Direct network send is opt-in through `--send`.
 Claude Code hooks are the hard tool-call enforcement path in V0. Other agent integrations are intentionally described as advisory because they rely on the host agent following project instructions.
 
 CI or another external gate should run `holdthegoblin verify` when a hard merge/deploy boundary is required.
+
+GitHub Actions summaries are report-only. They do not alter policy evaluation, hook decisions, or process exit codes.
 
 ## Local State
 

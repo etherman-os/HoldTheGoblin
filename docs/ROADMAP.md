@@ -18,11 +18,13 @@ HoldTheGoblin is a safety tool, so roadmap items need measurable enforcement or 
   Acceptance: users can add a copy-paste workflow that runs `holdthegoblin verify` on pull requests.
 - HTML evidence report.
   Acceptance: local report renders checks, findings, edge-case suggestions, and command summaries, redacts known secret patterns before rendering, and escapes report values.
+- CI annotation summary.
+  Acceptance: GitHub Actions can publish a concise Markdown step summary that points to the local evidence artifact.
 
 ## Next
 
-- CI annotation summary.
-  Acceptance: GitHub Actions can publish a concise Markdown step summary that points to the local evidence artifact.
+- CI annotation diagnostics.
+  Acceptance: optional GitHub workflow commands can annotate failed checks without including raw command stdout/stderr or changing verification exit semantics.
 
 ## Later
 

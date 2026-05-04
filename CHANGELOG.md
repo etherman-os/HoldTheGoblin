@@ -8,6 +8,7 @@
 - Added documented config schema validation, `config validate`, `config schema`, and MCP `config_validate`.
 - Added downstream GitHub Actions verification workflow template.
 - Added local HTML evidence reports alongside Markdown and JSON verification reports.
+- Added GitHub Actions step summaries for concise CI evidence with artifact upload guidance.
 - Added installed-package smoke testing, package content allow/deny checks, sourcemap omission, MCP version derivation from package metadata, and fail-closed npm publish token handling.
 - Restricted observability exports to immutable `.holdthegoblin/runs` verification reports and added immutable report paths to verification evidence.
 
