@@ -1,9 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import path from 'node:path';
 import { z } from 'zod';
 import { createCheckpoint, rollbackCheckpoint, type CheckpointMeta } from './checkpoint.js';
-import { appPath, ensureAppDirs, loadConfig } from './config.js';
+import { appPath, ensureAppDir, ensureAppDirs, loadConfig } from './config.js';
 import { appendEvent } from './events.js';
 import { resolveExistingInsideProject } from './paths.js';
 import { redactSensitiveData, redactSensitiveText } from './redact.js';
@@ -328,6 +328,7 @@ function finalizeDeployResult(input: {
 }): DeployRunResult {
   ensureAppDirs(input.root);
   const ok = input.phases.every((phase) => phase.ok);
+  const deployRunsDir = ensureAppDir(input.root, 'deploy-runs');
   const result = redactSensitiveData<DeployRunResult>({
     ok,
     root: input.root,
@@ -342,9 +343,8 @@ function finalizeDeployResult(input: {
     checkpointId: input.checkpoint?.id,
     phases: input.phases,
     reportPath: appPath(input.root, 'deploy-latest.json'),
-    runReportPath: appPath(input.root, 'deploy-runs', `${input.runId}.json`),
+    runReportPath: path.join(deployRunsDir, `${input.runId}.json`),
   });
-  mkdirSync(path.dirname(result.runReportPath), { recursive: true });
   writeAtomic(result.runReportPath, JSON.stringify(result, null, 2) + '\n');
   writeAtomic(result.reportPath, JSON.stringify(result, null, 2) + '\n');
   return result;

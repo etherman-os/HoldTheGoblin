@@ -16,7 +16,8 @@ import { exportObservability } from './core/observability.js';
 import { renderHtmlReport, renderMarkdownReport, renderTextSummary } from './core/output.js';
 import { readPackageVersion } from './core/package.js';
 import { isInsidePath, resolveExistingInsideProject } from './core/paths.js';
-import { auditPolicyDecision, evaluateToolCallPreflight } from './core/preflight.js';
+import { auditPolicyDecision, evaluatePolicyEventPreflight, evaluateToolCallPreflight } from './core/preflight.js';
+import { assessReadiness, renderReadinessText } from './core/readiness.js';
 import { generateTests } from './core/testgen.js';
 import { verify } from './core/verify.js';
 
@@ -175,6 +176,32 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
   );
 
   server.registerTool(
+    'readiness',
+    {
+      title: 'Score HoldTheGoblin project readiness',
+      description: 'Score local guard coverage, CI gates, scanner availability, policy posture, evidence hygiene, and latest verification evidence. When runVerify is true, verification runs first and writes reports.',
+      inputSchema: {
+        ...rootSchema,
+        format: z.enum(['text', 'json']).optional().describe('Response format. Defaults to text.'),
+        runVerify: z.boolean().optional().describe('Run holdthegoblin verification before scoring. Defaults to false.'),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+      },
+    },
+    async ({ root, format, runVerify }) => {
+      const projectRoot = await resolveServerRoot(root);
+      const result = await assessReadiness({ root: projectRoot, runVerify: runVerify === true });
+      return {
+        isError: result.status === 'at-risk',
+        content: [{ type: 'text', text: format === 'json' ? JSON.stringify(result, null, 2) : renderReadinessText(result) }],
+      };
+    }
+  );
+
+  server.registerTool(
     'doctor',
     {
       title: 'Inspect HoldTheGoblin project setup',
@@ -296,6 +323,42 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
       const result = validateHandoffFiles(resolveExistingInsideProject(projectRoot, schema), resolveExistingInsideProject(projectRoot, input));
       return {
         isError: !result.ok,
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      };
+    }
+  );
+
+  server.registerTool(
+    'policy_evaluate',
+    {
+      title: 'Evaluate a normalized HoldTheGoblin policy event',
+      description: 'Evaluate a normalized shell/file/tool policy event and return a structured allow, ask, or deny decision. The redacted event and decision are audited locally.',
+      inputSchema: {
+        ...rootSchema,
+        host: z.enum(['claude-code', 'cli', 'mcp', 'unknown']).optional().describe('Calling host. Defaults to unknown.'),
+        cwd: z.string().optional().describe('Working directory associated with the action.'),
+        actionType: z.enum(['shell_command', 'file_read', 'file_write', 'tool_call']).describe('Normalized policy action type.'),
+        toolName: z.string().optional().describe('Optional host tool name such as Bash, Read, Write, or an MCP tool name.'),
+        action: z.record(z.string(), z.unknown()).optional().describe('Normalized action data. Use command for shell_command and path for file_read/file_write.'),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+      },
+    },
+    async ({ root, host, cwd, actionType, toolName, action }) => {
+      const projectRoot = await resolveServerRoot(root);
+      const result = evaluatePolicyEventPreflight({
+        host: host ?? 'mcp',
+        cwd: cwd ?? projectRoot,
+        actionType,
+        toolName,
+        action,
+      });
+      auditPolicyDecision(projectRoot, result);
+      return {
+        isError: result.decision.decision !== 'allow',
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
     }

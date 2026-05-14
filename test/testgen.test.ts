@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -37,6 +37,36 @@ test('test generation rejects output paths outside the project root', async () =
     generateTests({ root, output: '../outside.md' }),
     /escapes project root/
   );
+});
+
+test('test generation rejects symlinked output parent directories', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-testgen-output-parent-symlink-'));
+  const outside = mkdtempSync(path.join(tmpdir(), 'htg-testgen-output-outside-'));
+  writeFileSync(path.join(root, 'api.ts'), 'export function loadUser(id) { return fetch(`/users/${id}`); }\n');
+  symlinkSync(outside, path.join(root, 'plans'));
+
+  await assert.rejects(
+    generateTests({ root, output: 'plans/generated.md' }),
+    /output directory must not contain symlinks/
+  );
+  assert.equal(existsSync(path.join(outside, 'generated.md')), false);
+});
+
+test('test generation replaces output file symlinks instead of writing through them', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-testgen-output-file-symlink-'));
+  const outside = path.join(tmpdir(), `htg-testgen-outside-${Date.now()}.md`);
+  const output = path.join(root, 'plans', 'generated.md');
+  writeFileSync(path.join(root, 'api.ts'), 'export function loadUser(id) { return fetch(`/users/${id}`); }\n');
+  writeFileSync(outside, 'outside\n');
+  mkdirSync(path.dirname(output), { recursive: true });
+  symlinkSync(outside, output);
+
+  const result = await generateTests({ root, output: 'plans/generated.md' });
+
+  assert.equal(result.ok, true);
+  assert.equal(readFileSync(outside, 'utf8'), 'outside\n');
+  assert.equal(lstatSync(output).isSymbolicLink(), false);
+  assert.match(readFileSync(output, 'utf8'), /Generated Test Plan/);
 });
 
 test('ollama test generation handles success and fallback paths', async () => {
@@ -207,6 +237,65 @@ test('external model providers work with user subscriptions and custom endpoints
     await openAiServer.close();
     await ollamaCloudServer.close();
     await anthropicServer.close();
+  }
+});
+
+test('model provider endpoints reject unsafe URLs and do not follow redirects', async () => {
+  const urlCredentials = await generateText({
+    provider: 'openai-compatible',
+    model: 'custom-model',
+    baseUrl: 'https://user:pass@example.invalid/v1',
+    prompt: 'Write one test idea.',
+    timeoutMs: 500,
+  });
+  assert.equal(urlCredentials.ok, false);
+  assert.match(urlCredentials.error ?? '', /URL credentials/);
+  assert.doesNotMatch(urlCredentials.error ?? '', /pass/);
+
+  const insecure = await generateText({
+    provider: 'openai-compatible',
+    model: 'custom-model',
+    baseUrl: 'http://example.invalid/v1',
+    prompt: 'Write one test idea.',
+    timeoutMs: 500,
+  });
+  assert.equal(insecure.ok, false);
+  assert.match(insecure.error ?? '', /HTTPS/);
+
+  const encodedCredential = await generateText({
+    provider: 'openai-compatible',
+    model: 'custom-model',
+    baseUrl: 'https://example.invalid/v1?api_key%3Draw-secret',
+    prompt: 'Write one test idea.',
+    timeoutMs: 500,
+  });
+  assert.equal(encodedCredential.ok, false);
+  assert.match(encodedCredential.error ?? '', /credential-like/);
+  assert.doesNotMatch(encodedCredential.error ?? '', /raw-secret/);
+
+  let redirected = 0;
+  const targetServer = await startServer((_req, res) => {
+    redirected += 1;
+    res.writeHead(200).end('redirect target');
+  });
+  const redirectServer = await startServer((_req, res) => {
+    res.writeHead(307, { location: `${targetServer.url}/v1/chat/completions` }).end('redirect');
+  });
+
+  try {
+    const redirect = await generateText({
+      provider: 'openai-compatible',
+      model: 'custom-model',
+      baseUrl: `${redirectServer.url}/v1`,
+      prompt: 'Write one test idea.',
+      timeoutMs: 500,
+    });
+    assert.equal(redirect.ok, false);
+    assert.match(redirect.error ?? '', /HTTP 307/);
+    assert.equal(redirected, 0);
+  } finally {
+    await redirectServer.close();
+    await targetServer.close();
   }
 });
 

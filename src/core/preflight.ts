@@ -21,9 +21,32 @@ export interface ToolCallPreflightResult {
   decision: PolicyDecision;
 }
 
+export interface PolicyEventPreflightInput {
+  host?: PolicyEvent['host'];
+  cwd?: string;
+  actionType: PolicyActionType;
+  toolName?: string;
+  action?: Record<string, unknown>;
+}
+
 export function evaluateToolCallPreflight(input: ToolCallPreflightInput): ToolCallPreflightResult {
   const event = buildPolicyEvent(input);
   const risk = evaluateToolCallRisk(input.toolName, input.toolInput);
+  return {
+    event,
+    decision: {
+      schema: 'holdthegoblin.policy_decision.v1',
+      eventId: event.id,
+      decision: risk.decision,
+      reason: risk.reason,
+    },
+  };
+}
+
+export function evaluatePolicyEventPreflight(input: PolicyEventPreflightInput): ToolCallPreflightResult {
+  const event = buildNormalizedPolicyEvent(input);
+  const riskInput = toolCallInputForPolicyEvent(input);
+  const risk = evaluateToolCallRisk(riskInput.toolName, riskInput.toolInput);
   return {
     event,
     decision: {
@@ -61,6 +84,27 @@ function buildPolicyEvent(input: ToolCallPreflightInput): PolicyEvent {
     action: policyActionPayload(actionType, input.toolInput),
   };
   return redactSensitiveData(event);
+}
+
+function buildNormalizedPolicyEvent(input: PolicyEventPreflightInput): PolicyEvent {
+  const event: PolicyEvent = {
+    schema: 'holdthegoblin.policy_event.v1',
+    id: randomUUID(),
+    timestamp: new Date().toISOString(),
+    host: input.host ?? 'unknown',
+    actionType: input.actionType,
+    cwd: policyString(input.cwd),
+    toolName: policyString(input.toolName),
+    action: policyActionPayload(input.actionType, input.action),
+  };
+  return redactSensitiveData(event);
+}
+
+function toolCallInputForPolicyEvent(input: PolicyEventPreflightInput): { toolName: string; toolInput: Record<string, unknown> } {
+  if (input.actionType === 'shell_command') return { toolName: 'Bash', toolInput: { command: input.action?.command } };
+  if (input.actionType === 'file_read') return { toolName: input.toolName ?? 'Read', toolInput: { path: input.action?.path, pattern: input.action?.pattern } };
+  if (input.actionType === 'file_write') return { toolName: input.toolName ?? 'Write', toolInput: { path: input.action?.path } };
+  return { toolName: input.toolName ?? 'Tool', toolInput: input.action ?? {} };
 }
 
 function policyActionType(toolName: string | undefined): PolicyActionType {

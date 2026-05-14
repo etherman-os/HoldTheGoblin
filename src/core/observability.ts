@@ -1,10 +1,11 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { appPath, ensureAppDirs, loadConfig } from './config.js';
+import { appPath, ensureAppDir, ensureAppDirs, loadConfig } from './config.js';
 import { appendEvent } from './events.js';
 import { isInsidePath, resolveExistingInsideProject } from './paths.js';
 import { redactSensitiveData, redactSensitiveText } from './redact.js';
 import type { CheckResult, CommandResult, Finding, VerifyResult } from './types.js';
+import { validateHttpEndpoint } from './url-safety.js';
 
 export type ObservabilityProvider = 'langfuse' | 'agentops' | 'all';
 
@@ -132,11 +133,10 @@ async function exportProvider(
   timeoutMs: number
 ): Promise<ObservabilityExportResult> {
   ensureAppDirs(root);
-  const dir = appPath(root, 'exports');
-  mkdirSync(dir, { recursive: true });
+  const dir = ensureAppDir(root, 'exports');
   const payload = redactSensitiveData(provider === 'langfuse' ? buildLangfusePayload(result) : buildAgentOpsPayload(result));
   const outputPath = path.join(dir, `${provider}-${result.runId}.json`);
-  writeFileSync(outputPath, JSON.stringify(payload, null, 2) + '\n');
+  writeAtomic(outputPath, JSON.stringify(payload, null, 2) + '\n');
   if (!send) return { ok: true, provider, sent: false, outputPath };
 
   try {
@@ -203,39 +203,17 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
-function validateObservabilityEndpoint(value: string): string {
-  const parsed = new URL(value);
-  if (parsed.username || parsed.password) throw new Error('Observability endpoint must not include URL credentials.');
-  const host = parsed.hostname;
-  const loopback = host === 'localhost' || host === '127.0.0.1' || host === '::1';
-  if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && loopback)) {
-    throw new Error('Observability endpoint must use HTTPS unless targeting localhost.');
-  }
-  const sensitivePart = `${parsed.pathname}${parsed.search}${parsed.hash}`;
-  if (containsEncodedCredentialMaterial(sensitivePart) || redactSensitiveText(sensitivePart) !== sensitivePart) {
-    throw new Error('Observability endpoint must not include credential-like path, query, or fragment values.');
-  }
-  return parsed.toString();
-}
-
-function containsEncodedCredentialMaterial(value: string): boolean {
-  let current = value;
-  for (let index = 0; index < 3; index += 1) {
-    try {
-      const decoded = decodeURIComponent(current);
-      if (decoded === current) return false;
-      if (redactSensitiveText(decoded) !== decoded) return true;
-      current = decoded;
-    } catch {
-      return false;
-    }
-  }
-  return false;
-}
+const validateObservabilityEndpoint = (value: string): string => validateHttpEndpoint(value, 'Observability endpoint');
 
 function readTimeoutMs(): number {
   const value = Number(process.env.HOLDTHEGOBLIN_OBSERVABILITY_TIMEOUT_MS ?? '15000');
   return Number.isFinite(value) && value > 0 ? value : 15000;
+}
+
+function writeAtomic(file: string, content: string): void {
+  const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  writeFileSync(tmp, content);
+  renameSync(tmp, file);
 }
 
 function latestRunJson(root: string): string {

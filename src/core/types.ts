@@ -87,6 +87,7 @@ export interface CheckResult {
   status: CheckStatus;
   severity: 'info' | 'low' | 'medium' | 'high' | 'critical';
   message: string;
+  remediation?: string;
   evidence?: unknown;
 }
 

@@ -1,4 +1,5 @@
 import { redactSensitiveText } from './redact.js';
+import { validateHttpEndpoint } from './url-safety.js';
 
 export type ModelProvider =
   | 'ollama'
@@ -180,10 +181,11 @@ async function generateOllama(options: GenerateTextOptions, directCloud: boolean
   const model = resolveModel(options.provider, options.model);
   const baseUrl = (options.baseUrl
     ?? (directCloud ? process.env.OLLAMA_CLOUD_BASE_URL : process.env.OLLAMA_BASE_URL)
-    ?? (directCloud ? 'https://ollama.com' : 'http://localhost:11434')).replace(/\/$/, '');
+    ?? (directCloud ? 'https://ollama.com' : 'http://localhost:11434'));
+  const endpoint = validateModelEndpoint(baseUrl, options.provider);
   const apiKey = options.apiKey ?? process.env.OLLAMA_API_KEY;
   if (directCloud && !apiKey) throw new Error('OLLAMA_API_KEY is required for provider ollama-cloud.');
-  const response = await fetchWithTimeout(`${baseUrl}/api/generate`, {
+  const response = await fetchWithTimeout(`${endpoint}/api/generate`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -228,8 +230,9 @@ async function generateAnthropic(options: GenerateTextOptions, timeoutMs: number
   const model = resolveModel('anthropic', options.model);
   const apiKey = options.apiKey ?? process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is required for provider anthropic.');
-  const baseUrl = (options.baseUrl ?? process.env.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com').replace(/\/$/, '');
-  const response = await fetchWithTimeout(`${baseUrl}/v1/messages`, {
+  const baseUrl = options.baseUrl ?? process.env.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com';
+  const endpoint = validateModelEndpoint(baseUrl, options.provider);
+  const response = await fetchWithTimeout(`${endpoint}/v1/messages`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -250,7 +253,7 @@ async function generateAnthropic(options: GenerateTextOptions, timeoutMs: number
 function openAiBaseUrl(options: GenerateTextOptions): string {
   const base = options.baseUrl ?? baseUrlEnv(options.provider);
   if (!base) throw new Error(`Base URL is required for provider ${options.provider}.`);
-  const normalized = base.replace(/\/$/, '');
+  const normalized = validateModelEndpoint(base, options.provider);
   return normalized.endsWith('/chat/completions') ? normalized.slice(0, -'/chat/completions'.length) : normalized;
 }
 
@@ -338,10 +341,14 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    return await fetch(url, { ...init, redirect: 'manual', signal: controller.signal });
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function validateModelEndpoint(value: string, provider: ModelProvider): string {
+  return validateHttpEndpoint(value, `Model provider ${provider} base URL`).replace(/\/$/, '');
 }
 
 function readModelTimeoutMs(): number {

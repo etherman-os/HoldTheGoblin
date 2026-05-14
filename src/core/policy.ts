@@ -159,7 +159,7 @@ function tail(value: string): string {
   return trimmed.slice(-4000);
 }
 
-function findConfigPolicyDowngrades(config: HoldTheGoblinConfig): string[] {
+export function findConfigPolicyDowngrades(config: HoldTheGoblinConfig): string[] {
   const downgrades: string[] = [];
   if (!config.failPolicy.failOnTestFailure) downgrades.push('test failures do not block completion');
   if (!config.failPolicy.failOnSecrets) downgrades.push('secret findings do not block completion');

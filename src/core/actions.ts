@@ -8,6 +8,8 @@ export interface WorkflowActionRefFinding {
   uses: string;
   ref?: string;
   message: string;
+  suggestedPinnedUses: string;
+  remediation: string;
 }
 
 export interface WorkflowActionAuditOptions {
@@ -43,6 +45,7 @@ export function auditWorkflowActionRefs(root: string, options: WorkflowActionAud
     message: blocking
       ? `${blockingFindings.length} external GitHub Actions ref(s) are not pinned to a full commit SHA and are not allowlisted.`
       : `${findings.length} external GitHub Actions ref(s) are not pinned to a full commit SHA.${allowedCount > 0 ? ` ${allowedCount} allowlisted.` : ''} This is report-only; pin security-sensitive workflow refs downstream.`,
+    remediation: 'Resolve each external action to a reviewed upstream commit SHA, then replace mutable refs with owner/repo@<40-char-sha>. Keep allowlists only for intentionally mutable refs.',
     evidence: findings.slice(0, 20).map((finding) => ({ ...finding, allowlisted: allowed.has(finding.uses) })),
   }];
 }
@@ -62,15 +65,24 @@ export function findUnpinnedWorkflowActionRefs(root: string, file: string): Work
     const at = target.lastIndexOf('@');
     const ref = at >= 0 ? target.slice(at + 1) : undefined;
     if (ref && /^[a-f0-9]{40}$/i.test(ref)) return;
+    const suggestedPinnedUses = suggestedPinnedTarget(target);
     findings.push({
       file: rel,
       line: index + 1,
       uses: target,
       ref,
       message: ref ? `Action ref "${ref}" is not a full commit SHA.` : 'Action reference has no explicit ref.',
+      suggestedPinnedUses,
+      remediation: `Review the upstream action commit, then replace "${target}" with "${suggestedPinnedUses}".`,
     });
   });
   return findings;
+}
+
+function suggestedPinnedTarget(target: string): string {
+  const at = target.lastIndexOf('@');
+  const action = at >= 0 ? target.slice(0, at) : target;
+  return `${action}@<40-char-commit-sha>`;
 }
 
 function listWorkflowFiles(root: string): string[] {

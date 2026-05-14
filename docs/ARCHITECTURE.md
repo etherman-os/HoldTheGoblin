@@ -2,7 +2,7 @@
 
 HoldTheGoblin is a local-first verifier with these integration surfaces:
 
-- CLI: `holdthegoblin verify`, `hook`, `checkpoint`, `handoff`, `config`, `events`, `doctor`, `mcp`, `mcp-http`, `deploy`, `observability`, and `tests`.
+- CLI: `holdthegoblin verify`, `readiness`, `hook`, `checkpoint`, `handoff`, `config`, `events`, `doctor`, `mcp`, `mcp-http`, `deploy`, `observability`, and `tests`.
 - Agent project assets: Claude Code hooks, Cursor rules, Codex/Warp `AGENTS.md` rules, and agent skills.
 - SDK/MCP: exported TypeScript functions and a stdio MCP server for MCP-capable agents.
 - Framework adapters: dependency-light LangGraph and CrewAI helpers.
@@ -28,6 +28,14 @@ Claude Code `PreToolUse` hooks are normalized into `holdthegoblin.policy_event.v
 
 Credential-looking command arguments are treated as policy input, not log text. Split flags, inline flags, quoted shell fragments, generic authorization headers, URL credentials, and percent-encoded credential fragments are rejected or redacted before evidence is persisted. Pure environment references such as `$TOKEN`, `${TOKEN}`, and `Authorization: Bearer $TOKEN` remain allowed.
 
+MCP-capable agents can call `policy_evaluate` with a normalized shell/file/tool event before acting. The tool returns the same structured event/decision pair and writes the redacted policy audit locally; enforcement still depends on the caller honoring a non-allow decision unless the host provides a hard hook.
+
+## Readiness Flow
+
+`holdthegoblin readiness` reads local setup evidence and returns an advisory 0-100 score with a `release-ready`, `guarded`, `partial`, or `at-risk` status. It checks the latest immutable verification report, GitHub Actions verification gates, Claude Code hard hooks, advisory agent rules and skills, scanner availability, config policy downgrades, GitHub Actions pinning policy posture, and `.gitignore` hygiene for runtime evidence. Non-passing checks carry remediation text so agents can tell the difference between a working hook engine and project-level hook installation.
+
+By default readiness does not run tests or scanners. `readiness --verify` runs the normal verification flow first, which writes fresh `.holdthegoblin/` reports, and then scores the resulting evidence.
+
 ## Deploy Flow
 
 `holdthegoblin deploy run --plan <file>` reads a versioned deploy plan, validates policy downgrade controls, runs verification, creates a checkpoint, executes shadow/canary/promote commands, and runs rollback command plus checkpoint restore on failure.
@@ -46,6 +54,10 @@ Observability export reads verification JSON reports only from `.holdthegoblin/r
 
 Direct network send is opt-in through `--send`.
 
+## Model Provider Flow
+
+LLM-assisted test generation is opt-in. Provider base URLs are validated before network calls: URL credentials, credential-like path/query/fragment values, non-loopback cleartext HTTP, and redirects are rejected. Loopback HTTP remains allowed for local Ollama, LM Studio, vLLM, and compatible local gateways.
+
 ## Enforcement Boundaries
 
 Claude Code hooks are the hard tool-call enforcement path in V0. Other agent integrations are intentionally described as advisory because they rely on the host agent following project instructions.
@@ -55,6 +67,10 @@ CI or another external gate should run `holdthegoblin verify` when a hard merge/
 GitHub Actions summaries and annotations are report-only. They do not alter policy evaluation, hook decisions, or process exit codes.
 
 The GitHub Actions ref pinning audit is report-only by default. Repositories can set `githubActions.requirePinnedActions` to make non-allowlisted mutable `uses:` refs fail verification.
+
+Pinning audit findings include remediation guidance with the safe replacement shape `owner/repo@<40-char-sha>`. HoldTheGoblin does not resolve mutable refs to SHAs automatically because that must be reviewed against the upstream action commit before use.
+
+Readiness is an advisory posture report. It is useful for dashboards and agent context, but hard enforcement still comes from Claude Code hooks, CLI verify exit codes, CI, or guarded deploy plans.
 
 ## Local State
 

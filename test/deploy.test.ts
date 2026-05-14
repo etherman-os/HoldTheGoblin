@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -403,6 +403,29 @@ test('deploy rejects plan symlinks that resolve outside the project root', async
     runDeployPlan({ root, planPath: 'deploy.json' }),
     /resolves outside project root/
   );
+});
+
+test('deploy report writing rejects symlinked deploy-runs directory', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-deploy-runs-symlink-'));
+  const outside = mkdtempSync(path.join(tmpdir(), 'htg-deploy-runs-outside-'));
+  const ok = writeNodeScript(root, 'ok.js', 'process.exit(0);\n');
+  mkdirSync(path.join(root, '.holdthegoblin'), { recursive: true });
+  symlinkSync(outside, path.join(root, '.holdthegoblin', 'deploy-runs'));
+  const planPath = path.join(root, 'deploy.json');
+  writeFileSync(planPath, JSON.stringify({
+    version: 1,
+    name: 'deploy-runs-symlink',
+    verify: false,
+    checkpoint: false,
+    allowPolicyDowngrade: true,
+    shadow: { argv: [process.execPath, ok] },
+  }));
+
+  await assert.rejects(
+    runDeployPlan({ root, planPath, allowDangerous: true }),
+    /runtime directory must not be a symlink/
+  );
+  assert.deepEqual(readdirSync(outside), []);
 });
 
 test('deploy allowDangerous requires an external run approval', async () => {

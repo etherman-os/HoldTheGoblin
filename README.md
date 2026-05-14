@@ -62,13 +62,14 @@ The demo uses the real `holdthegoblin hook claude` entrypoint, not a mocked deci
 | Tool-call guard | Blocks destructive shell commands, literal credential arguments, and sensitive file reads through Claude Code hooks. |
 | Test verifier | Detects JS/TS, Python, Go, Rust, and Java test/lint/typecheck commands. |
 | Security scanner | Runs built-in secret scan; uses Semgrep and Trivy when installed. |
-| CI hardening audit | Reports external GitHub Actions refs that are not pinned to full commit SHAs, with opt-in blocking policy. |
+| CI hardening audit | Reports external GitHub Actions refs that are not pinned to full commit SHAs, with opt-in blocking policy and pinning remediation guidance. |
+| Readiness score | Scores latest verification evidence, CI gates, hard/advisory agent setup, scanner availability, policy posture, and runtime evidence hygiene. |
 | Test generation | Flags risky code paths and writes deterministic or LLM-assisted test plans through local/cloud providers. |
 | Handoff proof | Validates multi-agent JSON handoffs against a schema. |
 | Deploy guard | Runs verify, checkpoint, shadow/canary commands, health checks, rollback command, and checkpoint restore from a deploy plan. |
 | Rollback | Creates local file checkpoints and restores them on demand or during failed deploy phases. |
 | Observability | Writes evidence reports, redacted policy decision events, JSONL event logs, and Langfuse/AgentOps-compatible export payloads under `.holdthegoblin/`. |
-| MCP | Exposes verifier, read-only config validation, risk assessment, checkpoint, handoff, deploy, test generation, and observability tools over stdio or Streamable HTTP. |
+| MCP | Exposes verifier, readiness scoring, read-only config validation, policy evaluation, risk assessment, checkpoint, handoff, deploy, test generation, and observability tools over stdio or Streamable HTTP. |
 
 ## Commands
 
@@ -77,6 +78,7 @@ holdthegoblin --version
 holdthegoblin wrap --agent claude-code|cursor|codex|warp|all [path]
 holdthegoblin init --agent claude-code|cursor|codex|warp|all [--mode relaxed|balanced|strict]
 holdthegoblin verify [--format text|json|markdown|html] [--github-step-summary] [--github-annotations]
+holdthegoblin readiness [--format text|json] [--verify]
 holdthegoblin hook claude
 holdthegoblin checkpoint create|list|rollback [--id latest] [--delete-new]
 holdthegoblin handoff validate --schema schema.json --input payload.json
@@ -97,6 +99,8 @@ holdthegoblin demo
 ```
 
 `verify --format` changes stdout only. Verification reports are still written under `.holdthegoblin/`.
+
+`readiness` is advisory scoring, not a new enforcement boundary. It returns `release-ready`, `guarded`, `partial`, or `at-risk` from local evidence, and non-passing checks include a concrete remediation. `--verify` runs verification first and writes fresh `.holdthegoblin/` reports before scoring.
 
 `verify --github-step-summary` appends a concise Markdown job summary to the GitHub Actions `GITHUB_STEP_SUMMARY` file. This is report-only output; the CI gate still passes or fails from the `verify` exit code.
 
@@ -263,8 +267,11 @@ Example MCP client config:
 Available tools:
 
 - `verify`: run tests, security checks, edge-case detection, and evidence reporting.
+- `readiness`: score latest verification evidence, CI gates, agent setup, scanner availability, policy posture, and evidence hygiene.
 - `doctor`: inspect project setup and planned commands.
 - `config_validate`: validate `.holdthegoblin/config.json` before `verify`; this is read-only config checking, not an independent sandbox or hard enforcement layer.
+- `policy_evaluate`: evaluate a normalized shell/file/tool policy event and write a redacted local audit decision.
+- `risk_assess`: evaluate a proposed shell command or tool path; this is advisory unless the host enforces the decision.
 - `checkpoint_create`, `checkpoint_list`, `checkpoint_rollback`: snapshot and restore local work.
 - `handoff_validate`: validate a JSON handoff payload against a schema.
 - `events`: read recent HoldTheGoblin event logs.
@@ -274,6 +281,8 @@ Available tools:
 - `models_providers`: list supported model providers and environment variables.
 
 The `verify` MCP tool accepts `format: "html"` and returns HTML as text content. Verification also writes `.holdthegoblin/latest.html` and `.holdthegoblin/runs/<run-id>.html`; JSON responses include `htmlReportPath`.
+
+LLM-assisted test generation is opt-in. Provider base URLs reject URL credentials, credential-like path/query/fragment values, non-loopback cleartext HTTP, and redirects; loopback HTTP remains supported for local model servers.
 
 ## Evidence Reports
 

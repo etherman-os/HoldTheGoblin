@@ -15,7 +15,9 @@ This file maps advanced safety requirements to the current HoldTheGoblin impleme
 | Avoid writing raw generic tool argument values into default policy events. | `src/core/preflight.ts`, `src/core/policy-audit.ts` | `test/hook.test.ts` |
 | Cap large policy payloads before audit persistence. | `src/core/preflight.ts` | `test/hook.test.ts` |
 | Use private runtime, policy, and audit file permissions on Unix-like systems. | `src/core/config.ts`, `src/core/policy-audit.ts`, `src/core/events.ts` | `test/config.test.ts`, `test/hook.test.ts`, `test/redact.test.ts` |
-| Reject symlinked runtime and audit/event paths before append/read. | `src/core/config.ts`, `src/core/events.ts`, `src/core/policy-audit.ts` | `test/config.test.ts`, `test/redact.test.ts`, `test/hook.test.ts` |
+| Reject symlinked runtime and audit/event paths before append/read. | `src/core/config.ts`, `src/core/events.ts`, `src/core/policy-audit.ts`, `src/core/deploy.ts`, `src/core/observability.ts`, `src/core/checkpoint.ts` | `test/config.test.ts`, `test/redact.test.ts`, `test/hook.test.ts`, `test/deploy.test.ts`, `test/observability.test.ts`, `test/checkpoint.test.ts` |
+| Prevent checkpoint rollback from writing through symlinked source files, target files, or target parent directories. | `src/core/checkpoint.ts` | `test/checkpoint.test.ts` |
+| Prevent generated observability and test-plan artifacts from writing through symlinked output files or parent directories. | `src/core/observability.ts`, `src/core/testgen.ts` | `test/observability.test.ts`, `test/testgen.test.ts` |
 | Block sensitive file reads through direct tools and shell commands. | `src/core/risk.ts`, `src/core/hooks.ts` | `test/risk.test.ts`, `test/hook.test.ts` |
 | Fail closed on malformed hook input. | `src/core/hooks.ts` | `test/hook.test.ts` |
 | Enforce deploy hard-deny rules even when a plan asks for dangerous approval. | `src/core/deploy.ts`, `src/core/risk.ts` | `test/deploy.test.ts` |
@@ -23,8 +25,11 @@ This file maps advanced safety requirements to the current HoldTheGoblin impleme
 | Block deploy policy downgrades unless explicitly reviewed. | `src/core/deploy.ts`, `src/core/policy.ts` | `test/deploy.test.ts`, `test/security.test.ts` |
 | Validate observability endpoints before network send. | `src/core/observability.ts` | `test/observability.test.ts` |
 | Reject observability URL credentials, credential-like paths/query/fragment values, unsafe cleartext HTTP, and redirects. | `src/core/observability.ts` | `test/observability.test.ts` |
+| Validate LLM-assisted test generation provider endpoints before network send. | `src/core/llm.ts`, `src/core/url-safety.ts` | `test/testgen.test.ts` |
+| Reject model provider URL credentials, credential-like paths/query/fragment values, unsafe cleartext HTTP, and redirects while preserving loopback local model endpoints. | `src/core/llm.ts`, `src/core/url-safety.ts` | `test/testgen.test.ts`, `test/observability.test.ts` |
 | Require MCP HTTP auth for non-loopback binding and compare bearer tokens in constant time. | `src/mcp.ts`, `src/cli.ts` | `test/mcp.test.ts`, `test/cli.test.ts` |
 | Run MCP risk assessment through the same policy preflight and audit path. | `src/mcp.ts`, `src/core/preflight.ts` | `test/mcp.test.ts` |
+| Let MCP clients evaluate normalized policy events before acting. | `src/mcp.ts`, `src/core/preflight.ts` | `test/mcp.test.ts` |
 | Terminate timed-out command process trees. | `src/core/runner.ts` | `test/redact.test.ts` |
 | Do not inherit the full parent environment for spawned commands. | `src/core/runner.ts` | `test/redact.test.ts`, `test/deploy.test.ts` |
 | Allow verification and scanner commands to pass reviewed environment variable names from config without persisting values. | `src/core/config.ts`, `src/core/verify.ts`, `src/core/security.ts`, `src/core/runner.ts` | `test/config.test.ts`, `test/redact.test.ts` |
@@ -32,6 +37,7 @@ This file maps advanced safety requirements to the current HoldTheGoblin impleme
 | Record command environment key names only, never values. | `src/core/runner.ts`, `src/core/types.ts` | `test/redact.test.ts`, `test/deploy.test.ts` |
 | Omit raw scanner JSON from command evidence after parsing. | `src/core/security.ts` | `test/security.test.ts` |
 | Treat truncated scanner JSON as a skipped warning input, not as a pass. | `src/core/security.ts` | `test/security.test.ts` |
+| Report unpinned GitHub Actions refs with reviewed pinning guidance. | `src/core/actions.ts`, `src/core/output.ts` | `test/actions.test.ts` |
 
 ## Tracked Gaps
 
@@ -42,7 +48,7 @@ These are not bug-fix leftovers in the current code. They are larger product and
 | External policy hook engine. | Lets HoldTheGoblin call local or remote guard services before tool execution. |
 | Effective decision composition. | Separates built-in risk, external hook response, host capability, user approval, and final decision precedence. |
 | Richer typed policy event payloads. | Gives adapters better context without logging sensitive argument values. |
-| MCP `policy_evaluate` governance tool and policy resources. | Lets other agents ask for a structured policy decision directly. |
+| MCP policy resources. | Lets other agents inspect redacted policy config, recent audit decisions, and enforcement capabilities directly. |
 | Framework pre-tool guard examples. | Moves LangGraph/CrewAI adapters from post-run/advisory checks toward pre-tool enforcement where possible. |
 | Command-specific env allowlists for custom verification commands. | Project-level `execution.env` now exists; command-specific custom verification env config is still a future ergonomics improvement. |
 | Preflight freshness and idempotency. | Prevents stale allow decisions from being reused after policy or working-tree changes. |

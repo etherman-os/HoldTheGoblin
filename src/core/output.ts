@@ -43,7 +43,7 @@ export function renderMarkdownReport(result: VerifyResult): string {
 
   lines.push('## Checks');
   for (const check of result.checks) {
-    lines.push(`- ${statusIcon(check.status)} **${check.label}** (${check.severity}): ${check.message}`);
+    lines.push(`- ${statusIcon(check.status)} **${check.label}** (${check.severity}): ${check.message}${check.remediation ? ` Fix: ${check.remediation}` : ''}`);
   }
   if (result.checks.length === 0) lines.push('- No checks ran.');
   lines.push('');
@@ -149,12 +149,12 @@ export function renderTextSummary(result: VerifyResult): string {
 
   if (failed.length > 0) {
     lines.push('', 'Failures:');
-    for (const check of failed) lines.push(`- ${check.label}: ${check.message}`);
+    for (const check of failed) lines.push(`- ${check.label}: ${check.message}${check.remediation ? ` Fix: ${check.remediation}` : ''}`);
   }
 
   if (warnings.length > 0) {
     lines.push('', 'Warnings:');
-    for (const check of warnings) lines.push(`- ${check.label}: ${check.message}`);
+    for (const check of warnings) lines.push(`- ${check.label}: ${check.message}${check.remediation ? ` Fix: ${check.remediation}` : ''}`);
   }
 
   return lines.join('\n');
@@ -162,8 +162,8 @@ export function renderTextSummary(result: VerifyResult): string {
 
 function renderChecksTable(checks: VerifyResult['checks']): string {
   if (checks.length === 0) return section('Checks', '<div class="empty">No checks ran.</div>');
-  const rows = checks.map((check) => `<tr><td><span class="badge ${escapeAttr(check.status)}">${escapeHtml(statusIcon(check.status))}</span></td><td>${escapeHtml(check.label)}</td><td>${escapeHtml(check.severity)}</td><td>${escapeHtml(check.message)}</td></tr>`).join('\n');
-  return section('Checks', `<table><thead><tr><th>Status</th><th>Check</th><th>Severity</th><th>Message</th></tr></thead><tbody>${rows}</tbody></table>`);
+  const rows = checks.map((check) => `<tr><td><span class="badge ${escapeAttr(check.status)}">${escapeHtml(statusIcon(check.status))}</span></td><td>${escapeHtml(check.label)}</td><td>${escapeHtml(check.severity)}</td><td>${escapeHtml(check.message)}</td><td>${escapeHtml(check.remediation ?? '')}</td></tr>`).join('\n');
+  return section('Checks', `<table><thead><tr><th>Status</th><th>Check</th><th>Severity</th><th>Message</th><th>Remediation</th></tr></thead><tbody>${rows}</tbody></table>`);
 }
 
 function renderCommandsTable(commands: VerifyResult['commandResults']): string {

@@ -5,12 +5,14 @@ This roadmap tracks higher-assurance safety work for HoldTheGoblin. Items here s
 ## Baseline Now In Place
 
 - Policy preflight events for shell commands, file reads, file writes, and generic tool calls.
+- MCP `policy_evaluate` tool for normalized shell/file/tool policy events with local redacted audit records.
 - Redacted policy decision audit records under `.holdthegoblin/policy/audit.jsonl`.
 - Literal credential detection for split flags, inline flags, authorization headers, quoted shell fragments, URL credentials, and percent-encoded credential fragments.
 - Environment-reference allowance for values such as `$TOKEN`, `${TOKEN}`, and `Authorization: Bearer $TOKEN`.
 - Private runtime directory and audit file permissions on Unix-like systems.
 - Symlink checks before writing event and policy audit logs.
 - Observability endpoint validation that rejects credential-bearing URLs, cleartext non-loopback HTTP, and redirects.
+- LLM-assisted test generation endpoint validation that rejects credential-bearing URLs, cleartext non-loopback HTTP, credential-like URL material, and redirects while preserving loopback local model endpoints.
 - MCP HTTP authentication that requires env-provided tokens for non-loopback use and compares bearer tokens in constant time.
 - Config and deploy-plan validation that rejects persisted literal credentials before commands are stored or executed.
 - Command execution no longer inherits the full parent process environment by default.
@@ -66,7 +68,6 @@ Make policy evaluation itself available through MCP so other agents and tools ca
 
 Acceptance criteria:
 
-- Add a `policy_evaluate` MCP tool that accepts normalized policy events and returns structured decisions.
 - Expose read-only MCP resources for current policy config, recent audit decisions, and enforcement capabilities.
 - Keep all returned audit data redacted by default.
 - Add integration examples for MCP clients that call policy evaluation before tool execution.

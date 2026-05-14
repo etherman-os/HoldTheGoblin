@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -171,6 +171,43 @@ test('observability export rejects run symlinks that resolve outside the project
     exportObservability({ root, provider: 'all', run: '.holdthegoblin/runs/linked.json' }),
     /resolves outside project root/
   );
+});
+
+test('observability export rejects symlinked exports directory', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-observe-exports-symlink-'));
+  const result = sampleVerifyResult(root);
+  const runs = appPath(root, 'runs');
+  const outside = mkdtempSync(path.join(tmpdir(), 'htg-observe-exports-outside-'));
+  mkdirSync(runs, { recursive: true });
+  writeFileSync(path.join(runs, `${result.runId}.json`), JSON.stringify(result));
+  symlinkSync(outside, appPath(root, 'exports'));
+
+  await assert.rejects(
+    exportObservability({ root, provider: 'all', send: false }),
+    /runtime directory must not be a symlink/
+  );
+  assert.deepEqual(readdirSync(outside), []);
+});
+
+test('observability export replaces output file symlinks instead of writing through them', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-observe-output-symlink-'));
+  const result = sampleVerifyResult(root);
+  const runs = appPath(root, 'runs');
+  const exportsDir = appPath(root, 'exports');
+  const outside = path.join(tmpdir(), `htg-observe-outside-${Date.now()}.json`);
+  mkdirSync(runs, { recursive: true });
+  mkdirSync(exportsDir, { recursive: true });
+  writeFileSync(path.join(runs, `${result.runId}.json`), JSON.stringify(result));
+  writeFileSync(outside, 'outside\n');
+  const output = path.join(exportsDir, `langfuse-${result.runId}.json`);
+  symlinkSync(outside, output);
+
+  const exported = await exportObservability({ root, provider: 'langfuse', send: false });
+
+  assert.equal(exported[0].ok, true);
+  assert.equal(readFileSync(outside, 'utf8'), 'outside\n');
+  assert.equal(lstatSync(output).isSymbolicLink(), false);
+  assert.match(readFileSync(output, 'utf8'), /holdthegoblin.verify/);
 });
 
 function sampleVerifyResult(root: string): VerifyResult {

@@ -14,8 +14,9 @@ export {
   type ConfigValidationResult,
 } from './core/config.js';
 export { commandContainsLiteralCredential, evaluateCommandRisk, evaluatePathReadRisk, evaluateToolCallRisk } from './core/risk.js';
-export { auditPolicyDecision, evaluateToolCallPreflight, type ToolCallPreflightInput, type ToolCallPreflightResult } from './core/preflight.js';
+export { auditPolicyDecision, evaluatePolicyEventPreflight, evaluateToolCallPreflight, type PolicyEventPreflightInput, type ToolCallPreflightInput, type ToolCallPreflightResult } from './core/preflight.js';
 export { appendPolicyAudit, policyAuditPath, type PolicyAuditRecord } from './core/policy-audit.js';
+export { assessReadiness, renderReadinessText, type AssessReadinessOptions, type LatestVerifyReadiness, type ReadinessCheck, type ReadinessCheckStatus, type ReadinessResult, type ReadinessStatus } from './core/readiness.js';
 export { validateHandoff, validateHandoffFiles, type ValidationResult, type ValidationIssue } from './core/handoff.js';
 export { createCheckpoint, listCheckpoints, rollbackCheckpoint, type CheckpointMeta } from './core/checkpoint.js';
 export { runDeployPlan, readDeployPlan, writeExampleDeployPlan, type DeployPlan, type DeployRunResult } from './core/deploy.js';

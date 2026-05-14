@@ -16,6 +16,7 @@ import { renderTextSummary } from './core/output.js';
 import { readPackageVersion } from './core/package.js';
 import { resolveExistingInsideProject, resolveInsideProject } from './core/paths.js';
 import { auditPolicyDecision, evaluateToolCallPreflight } from './core/preflight.js';
+import { assessReadiness, renderReadinessText } from './core/readiness.js';
 import { commandExists } from './core/runner.js';
 import { CONFIG_JSON_SCHEMA, configPath, loadConfig, validateConfigFile, validateProjectConfig } from './core/config.js';
 import { generateTests, type TestGenerationProvider } from './core/testgen.js';
@@ -48,6 +49,8 @@ async function main(): Promise<number> {
         return cmdWrap(args);
       case 'verify':
         return cmdVerify(args, root);
+      case 'readiness':
+        return cmdReadiness(args, root);
       case 'hook':
         return cmdHook(args);
       case 'checkpoint':
@@ -134,6 +137,18 @@ async function cmdVerify(args: ParsedArgs, root: string): Promise<number> {
     console.log(renderTextSummary(result));
   }
   return result.ok ? 0 : 1;
+}
+
+async function cmdReadiness(args: ParsedArgs, root: string): Promise<number> {
+  const format = stringFlag(args, 'format') ?? 'text';
+  if (!['text', 'json'].includes(format)) throw new Error('readiness --format must be text or json.');
+  const result = await assessReadiness({ root, runVerify: booleanFlag(args, 'verify') });
+  if (format === 'json') {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    console.log(renderReadinessText(result));
+  }
+  return result.status === 'at-risk' ? 1 : 0;
 }
 
 async function cmdHook(args: ParsedArgs): Promise<number> {
@@ -508,7 +523,7 @@ function commandAcceptsSubcommand(command: string | undefined): boolean {
   return new Set(['hook', 'checkpoint', 'handoff', 'risk', 'config', 'deploy', 'observability', 'tests', 'models']).has(command ?? '');
 }
 
-const BOOLEAN_FLAGS = new Set(['delete-new', 'dry-run', 'send', 'help', 'h', 'allow-dangerous', 'github-step-summary', 'github-annotations']);
+const BOOLEAN_FLAGS = new Set(['delete-new', 'dry-run', 'send', 'help', 'h', 'allow-dangerous', 'github-step-summary', 'github-annotations', 'verify']);
 
 function parseBooleanValue(value: string, key: string): boolean {
   if (value === 'true') return true;
@@ -528,6 +543,7 @@ Usage:
   holdthegoblin init --agent claude-code|cursor|codex|warp|all [--mode relaxed|balanced|strict]
   holdthegoblin wrap --agent claude-code|cursor|codex|warp|all [path]
   holdthegoblin verify [--format text|json|markdown|html] [--github-step-summary] [--github-annotations]
+  holdthegoblin readiness [--format text|json] [--verify]
   holdthegoblin hook claude
   holdthegoblin checkpoint create|list|rollback [--id latest] [--delete-new]
   holdthegoblin handoff validate --schema schema.json --input payload.json
@@ -549,6 +565,8 @@ Usage:
 Notes:
   verify writes .holdthegoblin/latest.md, .holdthegoblin/latest.html, and immutable .holdthegoblin/runs/<run-id> reports.
   verify --format selects stdout format only.
+  readiness scores local guard coverage, CI gates, scanner availability, policy posture, evidence hygiene, and latest verify evidence.
+  readiness --verify runs verification first, so it writes fresh evidence reports before scoring.
   verify --github-step-summary appends a concise Markdown summary to GitHub Actions GITHUB_STEP_SUMMARY.
   verify --github-annotations emits redacted GitHub Actions workflow command annotations for failed checks, failed commands, warnings/skips, and findings.
 `);

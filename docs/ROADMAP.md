@@ -28,11 +28,15 @@ HoldTheGoblin is a safety tool, so roadmap items need measurable enforcement or 
   Acceptance: verification reports external GitHub Actions refs that are not pinned to full commit SHAs without changing verification exit semantics.
 - Workflow action pinning policy controls.
   Acceptance: repos can opt into blocking unpinned external action refs in strict/release workflows with documented allowlists.
+- Workflow action pinning autofix guidance.
+  Acceptance: evidence reports include actionable guidance for replacing mutable GitHub Action refs with reviewed commit SHAs.
+- MCP policy evaluation.
+  Acceptance: MCP clients can submit normalized shell/file/tool policy events and receive structured audited decisions before acting.
 
 ## Next
 
-- Workflow action pinning autofix guidance.
-  Acceptance: evidence reports include actionable guidance for replacing mutable GitHub Action refs with reviewed commit SHAs.
+- External policy hook engine.
+  Acceptance: local/remote policy hooks can participate in preflight decisions through a normalized contract without leaking raw sensitive payloads.
 
 ## Later
 

@@ -2,6 +2,10 @@
 
 ## 0.1.3
 
+- Added advisory readiness scoring across latest verification evidence, CI gates, hard/advisory agent setup, scanner availability, policy posture, and runtime evidence hygiene through CLI, SDK, and MCP.
+- Added readiness remediation guidance so warnings distinguish hook-engine tests from project-level Claude hook wiring and tell users the next command to run.
+- Added GitHub Actions pinning remediation in verification checks and evidence so mutable `uses:` refs point to reviewed full-SHA replacement guidance.
+- Added MCP `policy_evaluate` for normalized shell/file/tool policy events with structured decisions and redacted local audit records.
 - Added deploy policy downgrade blocking for disabled verification, checkpointing, checkpoint rollback, and promotion health gates.
 - Added shell-free deploy `argv` commands, inline interpreter review gates, dry-run risk evaluation, deploy run history, and non-retry defaults for mutating deploy phases.
 - Added configuration policy-floor findings so weakened test, secret, Semgrep, or Trivy policies are explicit and blocking in strict/release verification.
@@ -12,6 +16,7 @@
 - Added GitHub Actions step summaries and escaped workflow annotations for concise CI evidence with artifact upload guidance.
 - Added GitHub Actions ref pinning audit with opt-in blocking policy and allowlists for mutable external workflow action refs.
 - Added installed-package smoke testing, package content allow/deny checks, sourcemap omission, MCP version derivation from package metadata, and token-gated npm provenance publishing.
+- Hardened release automation by separating read-only release checks from privileged GitHub Release/npm publishing and publishing the exact packed tarball.
 - Restricted observability exports to immutable `.holdthegoblin/runs` verification reports and added immutable report paths to verification evidence.
 
 ## 0.1.2

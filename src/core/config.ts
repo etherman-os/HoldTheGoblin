@@ -192,11 +192,19 @@ export function appPath(root: string, ...parts: string[]): string {
   return path.join(root, APP_DIR, ...parts);
 }
 
+export function ensureAppDir(root: string, ...parts: string[]): string {
+  const base = appPath(root);
+  ensureRuntimeDir(root, base);
+  const dir = appPath(root, ...parts);
+  if (parts.length > 0) ensureRuntimeDir(root, dir);
+  return dir;
+}
+
 export function ensureAppDirs(root: string): void {
-  ensureRuntimeDir(root, appPath(root));
-  ensureRuntimeDir(root, appPath(root, 'runs'));
-  ensureRuntimeDir(root, appPath(root, 'checkpoints'));
-  ensureRuntimeDir(root, appPath(root, 'tmp'));
+  ensureAppDir(root);
+  ensureAppDir(root, 'runs');
+  ensureAppDir(root, 'checkpoints');
+  ensureAppDir(root, 'tmp');
 }
 
 export function configPath(root: string): string {

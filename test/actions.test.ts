@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -25,9 +25,13 @@ jobs:
   assert.equal(findings.length, 1);
   assert.equal(findings[0].uses, 'actions/checkout@v6');
   assert.equal(findings[0].ref, 'v6');
+  assert.equal(findings[0].suggestedPinnedUses, 'actions/checkout@<40-char-commit-sha>');
+  assert.match(findings[0].remediation, /Review the upstream action commit/);
   const [check] = auditWorkflowActionRefs(root);
   assert.equal(check.status, 'warn');
   assert.match(check.message, /not pinned/);
+  assert.match(check.remediation ?? '', /owner\/repo@<40-char-sha>/);
+  assert.match(JSON.stringify(check.evidence), /suggestedPinnedUses/);
 });
 
 test('can fail unpinned GitHub Actions refs when policy is required', () => {
@@ -109,3 +113,30 @@ test('does not follow symlinked workflow directories', (t) => {
 
   assert.deepEqual(auditWorkflowActionRefs(root), []);
 });
+
+test('publish workflow keeps release checks separate from publish credentials', () => {
+  const workflow = readFileSync('.github/workflows/publish.yml', 'utf8');
+  const verify = workflowJobBlock(workflow, 'verify');
+  const publish = workflowJobBlock(workflow, 'publish');
+
+  assert.match(verify, /permissions:\n\s+contents: read/);
+  assert.match(verify, /npm run release:check/);
+  assert.doesNotMatch(verify, /id-token: write/);
+  assert.doesNotMatch(verify, /contents: write/);
+
+  assert.match(publish, /needs: verify/);
+  assert.match(publish, /permissions:\n\s+contents: write\n\s+id-token: write/);
+  assert.match(publish, /persist-credentials: false/);
+  assert.match(publish, /npm ci --ignore-scripts/);
+  assert.match(publish, /npm pack --json --ignore-scripts/);
+  assert.match(publish, /npm publish "\$PACKAGE_FILE" --provenance --access public --ignore-scripts/);
+  assert.doesNotMatch(publish, /npm run release:check/);
+});
+
+function workflowJobBlock(workflow: string, job: string): string {
+  const start = workflow.indexOf(`  ${job}:\n`);
+  assert.notEqual(start, -1, `missing workflow job ${job}`);
+  const rest = workflow.slice(start + 1);
+  const next = rest.search(/\n  [A-Za-z0-9_-]+:\n/);
+  return next >= 0 ? workflow.slice(start, start + 1 + next) : workflow.slice(start);
+}

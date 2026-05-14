@@ -1,11 +1,11 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { appPath, ensureAppDirs } from './config.js';
 import { appendEvent } from './events.js';
 import { findEdgeCases } from './edgecases.js';
 import { getChangedFiles } from './git.js';
 import { generateText, type ModelProvider } from './llm.js';
-import { resolveInsideProject } from './paths.js';
+import { isInsidePath, resolveInsideProject } from './paths.js';
 import { redactSensitiveText } from './redact.js';
 import type { EdgeCaseSuggestion } from './types.js';
 
@@ -35,7 +35,8 @@ export async function generateTests(options: {
   const outputPath = options.output
     ? resolveInsideProject(options.root, options.output)
     : appPath(options.root, 'generated-tests.md');
-  mkdirSync(path.dirname(outputPath), { recursive: true });
+  ensureAppDirs(options.root);
+  prepareOutputPath(options.root, outputPath);
 
   let content = renderDeterministicTestPlan(suggestions);
   let ok = true;
@@ -53,8 +54,7 @@ export async function generateTests(options: {
     if (generated.content) content = generated.content;
   }
 
-  ensureAppDirs(options.root);
-  writeFileSync(outputPath, content.endsWith('\n') ? content : `${content}\n`);
+  writeAtomic(outputPath, content.endsWith('\n') ? content : `${content}\n`);
   const result: TestGenerationResult = {
     ok,
     provider,
@@ -156,4 +156,39 @@ function providerModelFromEnv(provider: ModelProvider): string | undefined {
     case 'deepseek':
       return process.env.DEEPSEEK_MODEL ?? 'deepseek-v4-flash';
   }
+}
+
+function prepareOutputPath(root: string, outputPath: string): void {
+  const parent = path.dirname(outputPath);
+  assertOutputAncestorsSafe(root, parent, outputPath);
+  mkdirSync(parent, { recursive: true });
+  const realRoot = realpathSync(root);
+  const realParent = realpathSync(parent);
+  if (!isInsidePath(realRoot, realParent)) throw new Error(`Test generation output directory resolves outside project root: ${path.relative(root, outputPath)}`);
+  if (existsSync(outputPath) && lstatSync(outputPath).isDirectory()) {
+    throw new Error(`Test generation output path must be a file: ${path.relative(root, outputPath)}`);
+  }
+}
+
+function assertOutputAncestorsSafe(root: string, parent: string, outputPath: string): void {
+  const relative = path.relative(root, parent);
+  if (relative === '') return;
+  if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error(`Test generation output escapes project root: ${path.relative(root, outputPath)}`);
+
+  const realRoot = realpathSync(root);
+  let current = root;
+  for (const part of relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, part);
+    if (!existsSync(current)) return;
+    const stat = lstatSync(current);
+    if (stat.isSymbolicLink()) throw new Error(`Test generation output directory must not contain symlinks: ${path.relative(root, outputPath)}`);
+    if (!stat.isDirectory()) throw new Error(`Test generation output parent must be a directory: ${path.relative(root, outputPath)}`);
+    if (!isInsidePath(realRoot, realpathSync(current))) throw new Error(`Test generation output directory resolves outside project root: ${path.relative(root, outputPath)}`);
+  }
+}
+
+function writeAtomic(file: string, content: string): void {
+  const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  writeFileSync(tmp, content);
+  renameSync(tmp, file);
 }

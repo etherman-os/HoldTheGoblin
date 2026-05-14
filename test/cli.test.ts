@@ -123,6 +123,21 @@ test('risk assess reports advisory tool-call decisions through CLI', () => {
   assert.match(allowed, /"decision": "allow"/);
 });
 
+test('readiness reports machine-readable project score through CLI', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'htg-cli-readiness-'));
+  assert.throws(
+    () => execFileSync(process.execPath, [cli, 'readiness', '--format', 'json'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }),
+    (error) => {
+      const stdout = (error as { stdout?: Buffer }).stdout?.toString() ?? '';
+      const result = JSON.parse(stdout) as { schema?: string; status?: string; checks?: unknown[] };
+      assert.equal(result.schema, 'holdthegoblin.readiness.v1');
+      assert.equal(result.status, 'at-risk');
+      assert.ok(Array.isArray(result.checks));
+      return true;
+    }
+  );
+});
+
 test('mcp-http rejects literal auth token flag outside loopback', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'htg-cli-mcp-token-'));
   assert.throws(
